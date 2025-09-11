@@ -82,7 +82,7 @@ mwb search ">80 Dokumentation"
 mwb search "!ARD #Tatort"
 
 # Find documentaries about climate change longer than 30 minutes
-mwb search "#Dokumentation climate change >30"
+mwb search "dokumentation climate change >30"
 
 # Find news content from multiple channels
 mwb search "!ARD !ZDF !NDR #Nachrichten"
@@ -142,31 +142,46 @@ You can combine multiple selectors to refine your search:
 # All Tatort episodes from ARD or ZDF
 mwb search "!ARD !ZDF #Tatort"
 
-# Documentaries about nature longer than 45 minutes
+# Documentaries about nature longer than 45 minutes (explicit selectors)
 mwb search "#Dokumentation +Natur >45"
 
+# Or use simplified syntax (automatically processed)
+mwb search "dokumentation natur >45"
+
 # Short news segments from specific channels
-mwb search "!ARD !ZDF #Nachrichten <15"
+mwb search "!ARD !ZDF nachrichten <15"
 ```
+
+### Automatic Query Processing
+
+The CLI automatically processes queries that mix search terms with duration selectors:
+
+- **Single term + duration**: `"tatort >85"` → `"#tatort >85"` (topic search)
+- **Multiple terms + duration**: `"crime investigation >45"` → `"*crime *investigation >45"` (description search)  
+- **Explicit selectors**: `"#tatort >85"` → unchanged (user knows what they want)
+- **Duration only**: `">90"` → unchanged (duration-only search)
 
 ### Duration Filtering Best Practices
 
-Duration selectors are processed server-side by the mediathekviewweb API:
+Duration selectors are processed server-side by the mediathekviewweb API. The CLI automatically handles mixed search terms and duration selectors:
 
 ```bash
-# Feature-length documentaries (90+ minutes)
-mwb search "#Dokumentation >90"
+# Feature-length documentaries (90+ minutes) - automatically converted to topic search
+mwb search "dokumentation >90"
 
-# Quick news updates (under 5 minutes)
-mwb search "#Nachrichten <5"
+# Quick news updates (under 5 minutes) - automatically converted to topic search  
+mwb search "nachrichten <5"
 
 # Standard TV program length (between 45-90 minutes)
 mwb search ">45 <90"
 
 # Long-form investigative reports (over 60 minutes)
-mwb search "Reportage >60"
+mwb search "reportage >60"
 
-# Combine duration with topic and channel
+# Multiple search terms with duration - automatically uses description search
+mwb search "climate change documentary >30"
+
+# Combine duration with explicit selectors
 mwb search "!Arte #Dokumentation Klima >30 <120"
 ```
 
@@ -366,11 +381,16 @@ mwb search "Universität Vorlesung >45"
 
 8. **Short Forms**: All options have short forms for faster typing: `-s` (size), `-o` (offset), `-b` (sort-by), `-r` (sort-order), `-f` (format), `-e` (exclude), `-i` (include).
 
-9. **Duration Query Examples**:
-   - `>90 <180` - Feature films and long documentaries
-   - `>20 <45` - Standard program segments
-   - `<10` - News updates and short clips
-   - `>60` - In-depth content and investigations
+9. **Smart Query Processing**: You can mix search terms with duration selectors naturally:
+   - `"tatort >85"` automatically becomes topic search for better results
+   - `"climate change documentary >60"` uses description search for multiple terms
+   - No need to remember selector syntax for simple searches
+
+10. **Duration Query Examples**:
+    - `>90 <180` - Feature films and long documentaries
+    - `>20 <45` - Standard program segments  
+    - `<10` - News updates and short clips
+    - `>60` - In-depth content and investigations
 
 ### Quick Reference - Short Forms
 

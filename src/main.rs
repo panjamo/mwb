@@ -6,6 +6,7 @@ use mediathekviewweb::{Mediathek, models::{SortField, SortOrder}};
 use regex::Regex;
 use serde_json;
 
+
 #[derive(Parser)]
 #[command(name = "mwb")]
 #[command(about = "MediathekViewWeb CLI - Search German public broadcasting content")]
@@ -117,9 +118,12 @@ async fn search_content(
 ) -> Result<()> {
     let query_string = query_terms.join(" ");
     
+    // Preprocess query to handle duration selectors mixed with search terms
+    let processed_query = preprocess_query(&query_string);
+    
     // Build the query using the mediathekviewweb crate
     // Use the built-in query_string method to parse MediathekView syntax including duration selectors
-    let mut query_builder = client.query_string(&query_string, false);
+    let mut query_builder = client.query_string(&processed_query, false);
     
     // Apply other parameters
     query_builder = query_builder
@@ -163,6 +167,58 @@ async fn search_content(
     }
 
     Ok(())
+}
+
+fn preprocess_query(query: &str) -> String {
+    // Check if query contains duration selectors (>X or <X patterns)
+    let duration_pattern = regex::Regex::new(r"[><]\d+").unwrap();
+    
+    if !duration_pattern.is_match(query) {
+        // No duration selectors, return as-is
+        return query.to_string();
+    }
+    
+    // Split query into tokens
+    let tokens: Vec<&str> = query.split_whitespace().collect();
+    let mut search_terms = Vec::new();
+    let mut duration_selectors = Vec::new();
+    let mut has_selectors = false;
+    
+    for token in tokens {
+        if duration_pattern.is_match(token) {
+            duration_selectors.push(token.to_string());
+        } else if token.starts_with('!') || token.starts_with('#') || 
+                 token.starts_with('+') || token.starts_with('*') {
+            // This is already a proper selector
+            has_selectors = true;
+            search_terms.push(token.to_string());
+        } else {
+            // Regular search term
+            search_terms.push(token.to_string());
+        }
+    }
+    
+    // If we have regular search terms without selectors, and we have duration selectors,
+    // convert search terms to make them work better with duration filtering
+    if !has_selectors && !search_terms.is_empty() && !duration_selectors.is_empty() {
+        // For single terms, use topic selector for better precision
+        if search_terms.len() == 1 {
+            if let Some(first_term) = search_terms.first_mut() {
+                *first_term = format!("#{}", first_term);
+            }
+        } else {
+            // For multiple terms, use title/description search to be less restrictive
+            // Convert all terms to description search which is more inclusive
+            for term in &mut search_terms {
+                *term = format!("*{}", term);
+            }
+        }
+    }
+    
+    // Reconstruct query
+    let mut result_terms = search_terms;
+    result_terms.extend(duration_selectors);
+    result_terms.join(" ")
 }
 
 fn apply_regex_filters(
@@ -295,8 +351,9 @@ fn print_table(results: &[mediathekviewweb::models::Item], query_info: &mediathe
         
         if let Some(ref description) = entry.description {
             if !description.is_empty() && description.len() > 10 {
-                let desc = if description.len() > 200 {
-                    format!("{}...", &description[..200])
+                let desc = if description.chars().count() > 200 {
+                    let truncated: String = description.chars().take(200).collect();
+                    format!("{}...", truncated)
                 } else {
                     description.clone()
                 };
