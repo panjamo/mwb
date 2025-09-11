@@ -5,6 +5,9 @@ use colored::*;
 use mediathekviewweb::{Mediathek, models::{SortField, SortOrder}};
 use regex::Regex;
 use serde_json;
+use std::fs::File;
+use std::io::Write;
+use std::process::Command;
 
 
 #[derive(Parser)]
@@ -57,6 +60,10 @@ enum Commands {
         #[arg(short = 'f', long, default_value = "table")]
         format: String,
         
+        /// Save video links as VLC playlist and launch VLC
+        #[arg(short = 'v', long)]
+        vlc: bool,
+        
 
     },
     /// List available channels
@@ -82,6 +89,7 @@ async fn main() -> Result<()> {
             sort_order,
             exclude_future,
             format,
+            vlc,
         } => {
             search_content(
                 &client,
@@ -94,6 +102,7 @@ async fn main() -> Result<()> {
                 sort_order,
                 exclude_future,
                 format,
+                vlc,
             ).await?;
         }
         Commands::Channels => {
@@ -115,6 +124,7 @@ async fn search_content(
     sort_order: String,
     exclude_future: bool,
     format: String,
+    vlc: bool,
 ) -> Result<()> {
     let query_string = query_terms.join(" ");
     
@@ -156,15 +166,19 @@ async fn search_content(
     // Apply client-side regex filters
     let filtered_results = apply_regex_filters(result.results, exclude_patterns, include_patterns)?;
 
-    match format.as_str() {
-        "json" => {
-            println!("{}", serde_json::to_string_pretty(&filtered_results)?);
-        }
-        "csv" => {
-            print_csv(&filtered_results)?;
-        }
-        _ => {
-            print_table(&filtered_results, &result.query_info)?;
+    if vlc {
+        create_vlc_playlist_and_launch(&filtered_results)?;
+    } else {
+        match format.as_str() {
+            "json" => {
+                println!("{}", serde_json::to_string_pretty(&filtered_results)?);
+            }
+            "csv" => {
+                print_csv(&filtered_results)?;
+            }
+            _ => {
+                print_table(&filtered_results, &result.query_info)?;
+            }
         }
     }
 
@@ -311,6 +325,71 @@ async fn list_channels(client: &Mediathek) -> Result<()> {
     println!("{}: Use {} to filter by channel", "Tip".yellow(), "!CHANNEL".cyan());
     println!("{}: Use {} for duration filtering", "Tip".yellow(), ">90 <120".cyan());
 
+    Ok(())
+}
+
+fn create_vlc_playlist_and_launch(results: &[mediathekviewweb::models::Item]) -> Result<()> {
+    if results.is_empty() {
+        println!("{}", "No results found to add to playlist.".yellow());
+        return Ok(());
+    }
+
+    // Create playlist filename with timestamp
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs();
+    let playlist_name = format!("mwb_playlist_{}.m3u", timestamp);
+    
+    // Create M3U playlist file
+    let mut file = File::create(&playlist_name)?;
+    writeln!(file, "#EXTM3U")?;
+    
+    for entry in results.iter() {
+        // Write entry info as comment
+        writeln!(file, "#EXTINF:-1,{} - {}", entry.channel, entry.title)?;
+        // Write video URL
+        writeln!(file, "{}", entry.url_video)?;
+    }
+    
+    println!("{}", format!("Created playlist: {}", playlist_name).green());
+    println!("{}", format!("Added {} video(s) to playlist", results.len()).green());
+    
+    // Try to launch VLC with the playlist
+    println!("{}", "Launching VLC...".yellow());
+    
+    let vlc_result = if cfg!(target_os = "windows") {
+        // Try common VLC paths on Windows
+        Command::new("vlc")
+            .arg(&playlist_name)
+            .spawn()
+            .or_else(|_| {
+                Command::new("C:\\Program Files\\VideoLAN\\VLC\\vlc.exe")
+                    .arg(&playlist_name)
+                    .spawn()
+            })
+            .or_else(|_| {
+                Command::new("C:\\Program Files (x86)\\VideoLAN\\VLC\\vlc.exe")
+                    .arg(&playlist_name)
+                    .spawn()
+            })
+    } else {
+        // Try VLC on Unix-like systems
+        Command::new("vlc")
+            .arg(&playlist_name)
+            .spawn()
+    };
+    
+    match vlc_result {
+        Ok(_) => {
+            println!("{}", "VLC launched successfully!".green());
+        }
+        Err(e) => {
+            println!("{}", format!("Failed to launch VLC: {}", e).red());
+            println!("{}", format!("Playlist saved as: {}", playlist_name).yellow());
+            println!("{}", "You can manually open this file with VLC.".yellow());
+        }
+    }
+    
     Ok(())
 }
 

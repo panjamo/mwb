@@ -10,7 +10,8 @@ Built using the official [mediathekviewweb](https://crates.io/crates/mediathekvi
 - **Advanced Filtering**: Use MediathekView's powerful search syntax with selectors
 - **Duration Selectors**: Filter content by duration directly in the query (e.g., `>90` for content longer than 90 minutes)
 - **Exclusion Filter**: Filter out unwanted content using regex patterns
-- **Multiple Output Formats**: View results as formatted tables, JSON, or CSV
+- **Multiple Output Formats**: View results as formatted tables, JSON, CSV, or VLC playlists
+- **VLC Integration**: Create playlists and launch VLC directly with search results
 - **Channel Listing**: Browse all available broadcasting channels
 - **Flexible Sorting**: Sort results by date, duration, or channel
 
@@ -108,7 +109,33 @@ mwb search "Tatort" -f json
 
 # CSV output for spreadsheets using short form
 mwb search "Tatort" -f csv > results.csv
+
+# Create VLC playlist and launch VLC directly
+mwb search "Tatort >80" -v
+
+# Short form for VLC playlist
+mwb search "dokumentation >60" -s 10 -v
 ```
+
+### VLC Playlist Integration
+
+```bash
+# Create playlist and launch VLC with search results
+mwb search "tatort >85" --vlc
+
+# Use short form and combine with other options  
+mwb search "dokumentation climate change >30" -s 20 -e "weather" -v
+
+# VLC integration works with all search features
+mwb search "!Arte >60 <120" -v
+```
+
+The VLC feature:
+- Creates an M3U playlist file in the current directory with timestamp (e.g., `mwb_playlist_1234567890.m3u`)
+- Includes proper metadata (channel, title) for each video
+- Automatically launches VLC with the playlist
+- Works on Windows (tries common VLC installation paths) and Unix-like systems
+- Falls back gracefully if VLC cannot be launched - playlist file is still created
 
 ### List Available Channels
 
@@ -130,6 +157,7 @@ OPTIONS:
     -r, --sort-order <SORT_ORDER> Sort order (asc or desc) [default: desc]
         --no-future               Exclude future content (default: include future content)
     -f, --format <FORMAT>         Output format (table, json, csv) [default: table]
+    -v, --vlc                     Save video links as VLC playlist and launch VLC
 ```
 
 ## Search Syntax Details
@@ -287,6 +315,9 @@ mwb search ">90" -s 50 -f csv > long_content.csv
 
 # Get JSON for documentaries over an hour (using short form)
 mwb search "#Dokumentation >60" -f json | jq '.[] | {title, duration, url_video}'
+
+# Create VLC playlist with long documentaries (using short form)
+mwb search "#Dokumentation >90" -s 25 -v
 ```
 
 ## Output Fields
@@ -358,6 +389,36 @@ mwb search "!KiKA Lernen <15" -s 20
 
 # University-level lectures and discussions
 mwb search "Universität Vorlesung >45"
+
+# Create VLC playlist with educational content
+mwb search "Bildung Wissenschaft >30" -s 15 -v
+```
+
+### VLC Playlist for Binge Watching
+```bash
+# Create a playlist of all Tatort episodes over 80 minutes for weekend viewing
+mwb search "tatort >80" -s 50 -v
+
+# Arte documentaries for educational viewing session
+mwb search "!Arte dokumentation >45" -s 20 -e "trailer|preview" -v
+
+# Crime series marathon - exclude short clips and audio descriptions
+mwb search "krimi investigation >70" -s 30 -e "audio|kurz|short" -v
+
+# International content playlist from specific channels
+mwb search "!Arte !3Sat >60" -s 25 -i "deutsch|german|english" -v
+```
+
+### Curated Content Collections
+```bash
+# Create themed playlists for specific interests
+mwb search "wissenschaft physik astronomie >40" -s 15 -v
+
+# Historical documentaries playlist
+mwb search "geschichte dokumentation >50" -s 20 -e "wiederholung|repeat" -v
+
+# Nature and environment content for relaxing viewing
+mwb search "natur umwelt tiere >30" -s 25 -i "wild|forest|ocean" -v
 ```
 
 ## Tips and Tricks
@@ -406,6 +467,7 @@ mwb search "Universität Vorlesung >45"
 | `--sort-by` | `-b` | Sort field |
 | `--sort-order` | `-r` | Sort order (asc/desc) |
 | `--format` | `-f` | Output format |
+| `--vlc` | `-v` | Create VLC playlist |
 | `--no-future` | - | Exclude future content |
 
 ## Troubleshooting
@@ -414,6 +476,7 @@ mwb search "Universität Vorlesung >45"
 - **Duration Not Working**: Make sure to use `>` and `<` with numbers (minutes)
 - **API Errors**: The service might be temporarily unavailable
 - **Slow Responses**: Try reducing `--size` or using more specific selectors
+- **VLC Not Found**: If VLC doesn't launch, check your VLC installation path or manually open the created `.m3u` file
 
 ## Contributing
 
