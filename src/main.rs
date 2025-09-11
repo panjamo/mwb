@@ -345,8 +345,15 @@ fn create_vlc_playlist_and_launch(results: &[mediathekviewweb::models::Item]) ->
     writeln!(file, "#EXTM3U")?;
     
     for entry in results.iter() {
-        // Write entry info as comment
-        writeln!(file, "#EXTINF:-1,{} - {}", entry.channel, entry.title)?;
+        // Format the date from timestamp
+        let date_str = if let Some(dt) = chrono::DateTime::from_timestamp(entry.timestamp, 0) {
+            dt.format("%Y-%m-%d").to_string()
+        } else {
+            "Unknown".to_string()
+        };
+        
+        // Write entry info as comment with date
+        writeln!(file, "#EXTINF:-1,{} - {} ({})", entry.channel, entry.title, date_str)?;
         // Write video URL
         writeln!(file, "{}", entry.url_video)?;
     }

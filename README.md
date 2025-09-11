@@ -132,7 +132,8 @@ mwb search "!Arte >60 <120" -v
 
 The VLC feature:
 - Creates an M3U playlist file in the current directory with timestamp (e.g., `mwb_playlist_1234567890.m3u`)
-- Includes proper metadata (channel, title) for each video
+- Includes proper metadata (channel, title, broadcast date) for each video
+- Date format: YYYY-MM-DD (e.g., "ARD - Tatort: Episode Title (2025-09-12)")
 - Automatically launches VLC with the playlist
 - Works on Windows (tries common VLC installation paths) and Unix-like systems
 - Falls back gracefully if VLC cannot be launched - playlist file is still created
@@ -397,27 +398,29 @@ mwb search "Bildung Wissenschaft >30" -s 15 -v
 ### VLC Playlist for Binge Watching
 ```bash
 # Create a playlist of all Tatort episodes over 80 minutes for weekend viewing
+# Playlist will show dates to help identify episodes chronologically
 mwb search "tatort >80" -s 50 -v
 
-# Arte documentaries for educational viewing session
+# Arte documentaries for educational viewing session with broadcast dates
 mwb search "!Arte dokumentation >45" -s 20 -e "trailer|preview" -v
 
 # Crime series marathon - exclude short clips and audio descriptions
+# Dates help identify which episodes you've already watched
 mwb search "krimi investigation >70" -s 30 -e "audio|kurz|short" -v
 
-# International content playlist from specific channels
+# International content playlist from specific channels with chronological info
 mwb search "!Arte !3Sat >60" -s 25 -i "deutsch|german|english" -v
 ```
 
 ### Curated Content Collections
 ```bash
-# Create themed playlists for specific interests
+# Create themed playlists for specific interests with broadcast dates
 mwb search "wissenschaft physik astronomie >40" -s 15 -v
 
-# Historical documentaries playlist
+# Historical documentaries playlist - dates help avoid duplicates
 mwb search "geschichte dokumentation >50" -s 20 -e "wiederholung|repeat" -v
 
-# Nature and environment content for relaxing viewing
+# Nature and environment content for relaxing viewing with chronological order
 mwb search "natur umwelt tiere >30" -s 25 -i "wild|forest|ocean" -v
 ```
 
@@ -450,7 +453,9 @@ mwb search "natur umwelt tiere >30" -s 25 -i "wild|forest|ocean" -v
    - Finds results in titles, topics, and descriptions without missing content
    - No need to remember selector syntax for simple searches
 
-10. **Duration Query Examples**:
+10. **VLC Playlist Dates**: Playlists include broadcast dates in YYYY-MM-DD format to help identify content chronologically and avoid duplicates.
+
+11. **Duration Query Examples**:
     - `>90 <180` - Feature films and long documentaries
     - `>20 <45` - Standard program segments  
     - `<10` - News updates and short clips
