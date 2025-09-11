@@ -185,22 +185,22 @@ mwb search "!ARD !ZDF nachrichten <15"
 
 The CLI automatically processes queries that mix search terms with duration selectors:
 
-- **Single term + duration**: `"tatort >85"` → `"+tatort >85"` (title search for broader results)
-- **Multiple terms + duration**: `"crime investigation >45"` → `"*crime *investigation >45"` (description search)  
+- **Search terms + duration**: `"tatort >85"` → searches all fields (title, topic, description, channel) with duration filter applied server-side
+- **Multiple terms + duration**: `"dokumentation klima >30"` → searches all fields for content containing both terms, filtered by duration
 - **Explicit selectors**: `"#tatort >85"` → unchanged (user knows what they want)
 - **Duration only**: `">90"` → unchanged (duration-only search)
 
-The improved processing uses title search (`+`) for single terms instead of topic search (`#`), which provides more comprehensive results by searching titles, topics, and related fields.
+The improved processing allows natural all-field search while extracting duration selectors for server-side filtering, providing comprehensive results across all content fields.
 
 ### Duration Filtering Best Practices
 
 Duration selectors are processed server-side by the mediathekviewweb API. The CLI automatically handles mixed search terms and duration selectors:
 
 ```bash
-# Feature-length documentaries (90+ minutes) - automatically converted to title search
+# Feature-length documentaries (90+ minutes) - searches all fields naturally
 mwb search "dokumentation >90"
 
-# Quick news updates (under 5 minutes) - automatically converted to title search  
+# Quick news updates (under 5 minutes) - searches all fields naturally
 mwb search "nachrichten <5"
 
 # Standard TV program length (between 45-90 minutes)
@@ -448,9 +448,9 @@ mwb search "natur umwelt tiere >30" -s 25 -i "wild|forest|ocean" -v
 8. **Short Forms**: All options have short forms for faster typing: `-s` (size), `-o` (offset), `-b` (sort-by), `-r` (sort-order), `-f` (format), `-e` (exclude), `-i` (include).
 
 9. **Smart Query Processing**: You can mix search terms with duration selectors naturally:
-   - `"tatort >85"` automatically becomes title search for comprehensive results
-   - `"climate change documentary >60"` uses description search for multiple terms
-   - Finds results in titles, topics, and descriptions without missing content
+   - `"tatort >85"` searches all fields (title, topic, description, channel) with duration filtering
+   - `"climate change documentary >60"` finds content containing all terms across all fields
+   - Provides comprehensive results without being limited to specific fields
    - No need to remember selector syntax for simple searches
 
 10. **VLC Playlist Dates**: Playlists include broadcast dates in YYYY-MM-DD format to help identify content chronologically and avoid duplicates.

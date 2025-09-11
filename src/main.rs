@@ -10,6 +10,7 @@ use std::io::Write;
 use std::process::Command;
 
 
+
 #[derive(Parser)]
 #[command(name = "mwb")]
 #[command(about = "MediathekViewWeb CLI - Search German public broadcasting content")]
@@ -128,14 +129,31 @@ async fn search_content(
 ) -> Result<()> {
     let query_string = query_terms.join(" ");
     
-    // Preprocess query to handle duration selectors mixed with search terms
-    let processed_query = preprocess_query(&query_string);
-    
-
+    // Preprocess query to extract duration selectors and search terms
+    let (search_terms_only, duration_filters) = extract_duration_selectors(&query_string);
     
     // Build the query using the mediathekviewweb crate
-    // Use the built-in query_string method to parse MediathekView syntax including duration selectors
-    let mut query_builder = client.query_string(&processed_query, false);
+    // Use search terms without duration selectors for natural all-field search
+    let mut query_builder = if search_terms_only.is_empty() {
+        // Duration-only query
+        client.query_string("", false)
+    } else {
+        // Let the API handle natural search across all fields
+        client.query_string(&search_terms_only, false)
+    };
+    
+    // Apply duration filters extracted from the query
+    for filter in duration_filters {
+        if filter.starts_with('>') {
+            if let Ok(min_duration) = filter[1..].parse::<u64>() {
+                query_builder = query_builder.duration_min(std::time::Duration::from_secs(min_duration * 60));
+            }
+        } else if filter.starts_with('<') {
+            if let Ok(max_duration) = filter[1..].parse::<u64>() {
+                query_builder = query_builder.duration_max(std::time::Duration::from_secs(max_duration * 60));
+            }
+        }
+    }
     
     // Apply other parameters
     query_builder = query_builder
@@ -185,55 +203,32 @@ async fn search_content(
     Ok(())
 }
 
-fn preprocess_query(query: &str) -> String {
+fn extract_duration_selectors(query: &str) -> (String, Vec<String>) {
     // Check if query contains duration selectors (>X or <X patterns)
     let duration_pattern = regex::Regex::new(r"[><]\d+").unwrap();
     
     if !duration_pattern.is_match(query) {
-        // No duration selectors, return as-is
-        return query.to_string();
+        // No duration selectors, return original query and empty filters
+        return (query.to_string(), Vec::new());
     }
     
     // Split query into tokens
     let tokens: Vec<&str> = query.split_whitespace().collect();
     let mut search_terms = Vec::new();
     let mut duration_selectors = Vec::new();
-    let mut has_selectors = false;
     
     for token in tokens {
         if duration_pattern.is_match(token) {
             duration_selectors.push(token.to_string());
-        } else if token.starts_with('!') || token.starts_with('#') || 
-                 token.starts_with('+') || token.starts_with('*') {
-            // This is already a proper selector
-            has_selectors = true;
-            search_terms.push(token.to_string());
         } else {
-            // Regular search term
-            search_terms.push(token.to_string());
+            // Keep all other tokens (search terms and selectors) as-is
+            search_terms.push(token);
         }
     }
     
-    // If we have regular search terms without selectors, and we have duration selectors,
-    // convert search terms to make them work better with duration filtering
-    if !has_selectors && !search_terms.is_empty() && !duration_selectors.is_empty() {
-        // For single terms, use title selector for broader matching than topic
-        if search_terms.len() == 1 {
-            if let Some(first_term) = search_terms.first_mut() {
-                *first_term = format!("+{}", first_term);
-            }
-        } else {
-            // For multiple terms, use description search which is most inclusive
-            for term in &mut search_terms {
-                *term = format!("*{}", term);
-            }
-        }
-    }
-    
-    // Reconstruct query
-    let mut result_terms = search_terms;
-    result_terms.extend(duration_selectors);
-    result_terms.join(" ")
+    // Return search terms and duration filters separately
+    let search_query = search_terms.join(" ");
+    (search_query, duration_selectors)
 }
 
 fn apply_regex_filters(
