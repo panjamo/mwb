@@ -1,0 +1,8 @@
+/target
+*.csv
+*.json
+examples.bat.bak
+.env
+.vscode/
+.idea/
+*.log
