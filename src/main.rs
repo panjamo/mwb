@@ -41,20 +41,22 @@ enum Commands {
         offset: u32,
         
         /// Sort by field (timestamp, duration, channel)
-        #[arg(long, default_value = "timestamp")]
+        #[arg(short = 'b', long, default_value = "timestamp")]
         sort_by: String,
         
         /// Sort order (asc or desc)
-        #[arg(long, default_value = "desc")]
+        #[arg(short = 'r', long, default_value = "desc")]
         sort_order: String,
         
-        /// Include future content
-        #[arg(long)]
-        include_future: bool,
+        /// Exclude future content (default: include future content)
+        #[arg(long = "no-future")]
+        exclude_future: bool,
         
         /// Output format (table, json, csv)
-        #[arg(long, default_value = "table")]
+        #[arg(short = 'f', long, default_value = "table")]
         format: String,
+        
+
     },
     /// List available channels
     Channels,
@@ -77,7 +79,7 @@ async fn main() -> Result<()> {
             offset,
             sort_by,
             sort_order,
-            include_future,
+            exclude_future,
             format,
         } => {
             search_content(
@@ -89,7 +91,7 @@ async fn main() -> Result<()> {
                 offset,
                 sort_by,
                 sort_order,
-                include_future,
+                exclude_future,
                 format,
             ).await?;
         }
@@ -110,7 +112,7 @@ async fn search_content(
     offset: u32,
     sort_by: String,
     sort_order: String,
-    include_future: bool,
+    exclude_future: bool,
     format: String,
 ) -> Result<()> {
     let query_string = query_terms.join(" ");
@@ -121,7 +123,7 @@ async fn search_content(
     
     // Apply other parameters
     query_builder = query_builder
-        .include_future(include_future)
+        .include_future(!exclude_future)
         .size(size as usize)
         .offset(offset as usize);
     

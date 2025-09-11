@@ -91,10 +91,10 @@ mwb search "!ARD !ZDF !NDR #Nachrichten"
 mwb search "documentary" --exclude "sport.*ball" "weather.*report"
 
 # Search with regex inclusion (only show results matching patterns)
-mwb search "Nachrichten" --include "Politik|Wirtschaft" --exclude "Sport|Wetter"
+mwb search "Nachrichten" -i "Politik|Wirtschaft" -e "Sport|Wetter"
 
-# Find recent short clips from Arte
-mwb search "!Arte <20" --sort-by timestamp --sort-order desc --size 20
+# Find recent short clips from Arte using short forms
+mwb search "!Arte <20" -b timestamp -r desc -s 20
 ```
 
 ### Output Formats
@@ -103,11 +103,11 @@ mwb search "!Arte <20" --sort-by timestamp --sort-order desc --size 20
 # Default table format (human-readable)
 mwb search "Tatort"
 
-# JSON output for scripting
-mwb search "Tatort" --format json
+# JSON output for scripting using short form
+mwb search "Tatort" -f json
 
-# CSV output for spreadsheets
-mwb search "Tatort" --format csv > results.csv
+# CSV output for spreadsheets using short form
+mwb search "Tatort" -f csv > results.csv
 ```
 
 ### List Available Channels
@@ -126,10 +126,10 @@ OPTIONS:
     -i, --include <INCLUDE>...     Include regex patterns - only show matching results (space-separated)
     -s, --size <SIZE>             Maximum number of results [default: 15]
     -o, --offset <OFFSET>         Offset for pagination [default: 0]
-        --sort-by <SORT_BY>       Sort by field (timestamp, duration, channel) [default: timestamp]
-        --sort-order <SORT_ORDER> Sort order (asc or desc) [default: desc]
-        --include-future          Include future content
-        --format <FORMAT>         Output format (table, json, csv) [default: table]
+    -b, --sort-by <SORT_BY>       Sort by field (timestamp, duration, channel) [default: timestamp]
+    -r, --sort-order <SORT_ORDER> Sort order (asc or desc) [default: desc]
+        --no-future               Exclude future content (default: include future content)
+    -f, --format <FORMAT>         Output format (table, json, csv) [default: table]
 ```
 
 ## Search Syntax Details
@@ -222,18 +222,18 @@ mwb search "#Nachrichten" --include "Politik|Wirtschaft" --exclude "Sport|Wetter
 ### Finding Recent Documentaries
 
 ```bash
-# Recent long-form documentaries, newest first
-mwb search "#Dokumentation >45" --sort-by timestamp --sort-order desc --size 10
+# Recent long-form documentaries, newest first (using short forms)
+mwb search "#Dokumentation >45" -b timestamp -r desc -s 10
 ```
 
 ### Channel-specific Content with Duration
 
 ```bash
-# Everything from Arte longer than 60 minutes
-mwb search "!Arte >60" --size 20
+# Everything from Arte longer than 60 minutes (using short form)
+mwb search "!Arte >60" -s 20
 
-# Short segments from public broadcasters
-mwb search "!ARD !ZDF !NDR <20" --size 30
+# Short segments from public broadcasters (using short form)
+mwb search "!ARD !ZDF !NDR <20" -s 30
 ```
 
 ### Topic-based Duration Searches
@@ -252,8 +252,8 @@ mwb search "#Tatort #Polizeiruf >80 <100"
 ### Complex Duration and Content Filtering
 
 ```bash
-# Long documentaries about climate, excluding weather reports
-mwb search "#Dokumentation Klima >60" --exclude "\bWetter\b|Wettervorhersage"
+# Long documentaries about climate, excluding weather reports (using short form)
+mwb search "#Dokumentation Klima >60" -e "\bWetter\b|Wettervorhersage"
 
 # Short educational content for children
 mwb search "!KiKA Lernen Schule <30"
@@ -265,11 +265,11 @@ mwb search "!Arte Kultur >30 <90"
 ### Exporting Data
 
 ```bash
-# Export long-form content to CSV
-mwb search ">90" --size 50 --format csv > long_content.csv
+# Export long-form content to CSV (using short forms)
+mwb search ">90" -s 50 -f csv > long_content.csv
 
-# Get JSON for documentaries over an hour
-mwb search "#Dokumentation >60" --format json | jq '.[] | {title, duration, url_video}'
+# Get JSON for documentaries over an hour (using short form)
+mwb search "#Dokumentation >60" -f json | jq '.[] | {title, duration, url_video}'
 ```
 
 ## Output Fields
@@ -300,44 +300,44 @@ This tool uses the public MediathekViewWeb API at `https://mediathekviewweb.de/a
 
 ### Finding Recent Crime Shows
 ```bash
-# Find all standard-length Tatort episodes (typically 90 minutes)
-mwb search "#Tatort >80 <100" --sort-by timestamp --sort-order desc --size 10
+# Find all standard-length Tatort episodes (typically 90 minutes, using short forms)
+mwb search "#Tatort >80 <100" -b timestamp -r desc -s 10
 
-# Find crime shows of any length but exclude short clips and trailers
-mwb search "Krimi Tatort Polizeiruf >20" --exclude "Trailer|Preview|Vorschau"
+# Find crime shows of any length but exclude short clips and trailers (using short form)
+mwb search "Krimi Tatort Polizeiruf >20" -e "Trailer|Preview|Vorschau"
 
-# Only show Tatort episodes from specific cities, full length
-mwb search "#Tatort >75" --include "Münster|Stuttgart|Bremen"
+# Only show Tatort episodes from specific cities, full length (using short form)
+mwb search "#Tatort >75" -i "Münster|Stuttgart|Bremen"
 ```
 
 ### Researching Specific Topics
 ```bash
-# Find substantial documentaries about climate change
-mwb search "Klima Klimawandel >30" --exclude "\bWetter\b|Wettervorhersage"
+# Find substantial documentaries about climate change (using short forms)
+mwb search "Klima Klimawandel >30" -e "\bWetter\b|Wettervorhersage"
 
-# Search for in-depth news analysis (longer segments)
-mwb search "!ARD !ZDF Analyse >15" --include "Politik|Wirtschaft"
+# Search for in-depth news analysis (longer segments, using short forms)
+mwb search "!ARD !ZDF Analyse >15" -i "Politik|Wirtschaft"
 
-# Find comprehensive science documentaries
-mwb search "Wissenschaft >60" --include "Physik|Chemie|Astronomie" --exclude "Kurz|Short"
+# Find comprehensive science documentaries (using short forms)
+mwb search "Wissenschaft >60" -i "Physik|Chemie|Astronomie" -e "Kurz|Short"
 ```
 
 ### Media Analysis and Export
 ```bash
-# Export all substantial Arte content (over 45 minutes) to CSV
-mwb search "!ARTE.DE >45" --size 100 --format csv > arte_longform.csv
+# Export all substantial Arte content (over 45 minutes) to CSV (using short forms)
+mwb search "!ARTE.DE >45" -s 100 -f csv > arte_longform.csv
 
-# Find and analyze duration patterns in documentaries
-mwb search "#Dokumentation" --size 200 --format json | jq '.[] | {title, duration_seconds: .duration}'
+# Find and analyze duration patterns in documentaries (using short forms)
+mwb search "#Dokumentation" -s 200 -f json | jq '.[] | {title, duration_seconds: .duration}'
 ```
 
 ### Educational Content Discovery
 ```bash
-# Find comprehensive educational programs for adults
-mwb search "Bildung Wissen >30" --exclude "Kinder|Children"
+# Find comprehensive educational programs for adults (using short forms)
+mwb search "Bildung Wissen >30" -e "Kinder|Children"
 
-# Short educational clips for quick learning
-mwb search "!KiKA Lernen <15" --size 20
+# Short educational clips for quick learning (using short form)
+mwb search "!KiKA Lernen <15" -s 20
 
 # University-level lectures and discussions
 mwb search "Universität Vorlesung >45"
@@ -358,15 +358,32 @@ mwb search "Universität Vorlesung >45"
    - Feature-length: `>90` minutes
    - Short clips/trailers: `<5` minutes
 
-5. **Export for Analysis**: Use `--format json` or `--format csv` to export data for further processing.
+5. **Export for Analysis**: Use `-f json` or `-f csv` to export data for further processing.
 
-6. **Pagination**: Use `--offset` and `--size` for browsing through large result sets.
+6. **Pagination**: Use `-o` and `-s` for browsing through large result sets.
 
-7. **Duration Query Examples**:
+7. **Future Content**: By default, the CLI includes future/scheduled content. Use `--no-future` to exclude it.
+
+8. **Short Forms**: All options have short forms for faster typing: `-s` (size), `-o` (offset), `-b` (sort-by), `-r` (sort-order), `-f` (format), `-e` (exclude), `-i` (include).
+
+9. **Duration Query Examples**:
    - `>90 <180` - Feature films and long documentaries
    - `>20 <45` - Standard program segments
    - `<10` - News updates and short clips
    - `>60` - In-depth content and investigations
+
+### Quick Reference - Short Forms
+
+| Long Form | Short | Description |
+|-----------|-------|-------------|
+| `--exclude` | `-e` | Exclude regex patterns |
+| `--include` | `-i` | Include regex patterns |
+| `--size` | `-s` | Maximum results |
+| `--offset` | `-o` | Pagination offset |
+| `--sort-by` | `-b` | Sort field |
+| `--sort-order` | `-r` | Sort order (asc/desc) |
+| `--format` | `-f` | Output format |
+| `--no-future` | - | Exclude future content |
 
 ## Troubleshooting
 
