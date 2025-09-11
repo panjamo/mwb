@@ -121,6 +121,8 @@ async fn search_content(
     // Preprocess query to handle duration selectors mixed with search terms
     let processed_query = preprocess_query(&query_string);
     
+
+    
     // Build the query using the mediathekviewweb crate
     // Use the built-in query_string method to parse MediathekView syntax including duration selectors
     let mut query_builder = client.query_string(&processed_query, false);
@@ -201,14 +203,13 @@ fn preprocess_query(query: &str) -> String {
     // If we have regular search terms without selectors, and we have duration selectors,
     // convert search terms to make them work better with duration filtering
     if !has_selectors && !search_terms.is_empty() && !duration_selectors.is_empty() {
-        // For single terms, use topic selector for better precision
+        // For single terms, use title selector for broader matching than topic
         if search_terms.len() == 1 {
             if let Some(first_term) = search_terms.first_mut() {
-                *first_term = format!("#{}", first_term);
+                *first_term = format!("+{}", first_term);
             }
         } else {
-            // For multiple terms, use title/description search to be less restrictive
-            // Convert all terms to description search which is more inclusive
+            // For multiple terms, use description search which is most inclusive
             for term in &mut search_terms {
                 *term = format!("*{}", term);
             }

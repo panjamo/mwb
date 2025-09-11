@@ -156,20 +156,22 @@ mwb search "!ARD !ZDF nachrichten <15"
 
 The CLI automatically processes queries that mix search terms with duration selectors:
 
-- **Single term + duration**: `"tatort >85"` → `"#tatort >85"` (topic search)
+- **Single term + duration**: `"tatort >85"` → `"+tatort >85"` (title search for broader results)
 - **Multiple terms + duration**: `"crime investigation >45"` → `"*crime *investigation >45"` (description search)  
 - **Explicit selectors**: `"#tatort >85"` → unchanged (user knows what they want)
 - **Duration only**: `">90"` → unchanged (duration-only search)
+
+The improved processing uses title search (`+`) for single terms instead of topic search (`#`), which provides more comprehensive results by searching titles, topics, and related fields.
 
 ### Duration Filtering Best Practices
 
 Duration selectors are processed server-side by the mediathekviewweb API. The CLI automatically handles mixed search terms and duration selectors:
 
 ```bash
-# Feature-length documentaries (90+ minutes) - automatically converted to topic search
+# Feature-length documentaries (90+ minutes) - automatically converted to title search
 mwb search "dokumentation >90"
 
-# Quick news updates (under 5 minutes) - automatically converted to topic search  
+# Quick news updates (under 5 minutes) - automatically converted to title search  
 mwb search "nachrichten <5"
 
 # Standard TV program length (between 45-90 minutes)
@@ -382,8 +384,9 @@ mwb search "Universität Vorlesung >45"
 8. **Short Forms**: All options have short forms for faster typing: `-s` (size), `-o` (offset), `-b` (sort-by), `-r` (sort-order), `-f` (format), `-e` (exclude), `-i` (include).
 
 9. **Smart Query Processing**: You can mix search terms with duration selectors naturally:
-   - `"tatort >85"` automatically becomes topic search for better results
+   - `"tatort >85"` automatically becomes title search for comprehensive results
    - `"climate change documentary >60"` uses description search for multiple terms
+   - Finds results in titles, topics, and descriptions without missing content
    - No need to remember selector syntax for simple searches
 
 10. **Duration Query Examples**:
