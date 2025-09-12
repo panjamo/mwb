@@ -111,9 +111,11 @@ mwb search "Tatort" -f json
 mwb search "Tatort" -f csv > results.csv
 
 # Create VLC playlist and launch VLC directly
+# Creates file: mwb_Tatort_m80_1234.m3u
 mwb search "Tatort >80" -v
 
-# Short form for VLC playlist
+# Short form for VLC playlist  
+# Creates file: mwb_dokumentation_m60_1234.m3u
 mwb search "dokumentation >60" -s 10 -v
 ```
 
@@ -121,22 +123,45 @@ mwb search "dokumentation >60" -s 10 -v
 
 ```bash
 # Create playlist and launch VLC with search results
+# Creates file: mwb_tatort_m85_1234.m3u
 mwb search "tatort >85" --vlc
 
-# Use short form and combine with other options  
+# Use short form and combine with other options
+# Creates file: mwb_dokumentation_climate_change_m30_1234.m3u  
 mwb search "dokumentation climate change >30" -s 20 -e "weather" -v
 
 # VLC integration works with all search features
+# Creates file: mwb__Arte_m60_m120_1234.m3u
 mwb search "!Arte >60 <120" -v
 ```
 
 The VLC feature:
-- Creates an M3U playlist file in the current directory with timestamp (e.g., `mwb_playlist_1234567890.m3u`)
+- Creates an M3U playlist file with query-based naming (e.g., `mwb_tatort_m85_1234.m3u`)
+- Filename reflects search terms and duration filters for easy identification
 - Includes proper metadata (channel, title, broadcast date) for each video
 - Date format: YYYY-MM-DD (e.g., "ARD - Tatort: Episode Title (2025-09-12)")
 - Automatically launches VLC with the playlist
 - Works on Windows (tries common VLC installation paths) and Unix-like systems
 - Falls back gracefully if VLC cannot be launched - playlist file is still created
+
+#### Playlist Filename Format
+
+Playlist files are named based on your search query for easy identification:
+
+- **Format**: `mwb_<search_terms>_<duration>_<timestamp>.m3u`
+- **Examples**:
+  - `"tatort >85"` → `mwb_tatort_m85_1234.m3u`
+  - `"dokumentation klima >30 <90"` → `mwb_dokumentation_klima_m30_m90_1234.m3u`
+  - `"!Arte >60"` → `mwb__Arte_m60_1234.m3u`
+  - `">120"` → `mwb_m120_1234.m3u`
+
+**Character conversion**:
+- Spaces → `_` (underscore)
+- `>` → `m` (more than)
+- `<` → `m` (less than)  
+- Special chars (`!`, `#`, `+`, `*`) → `_`
+- Long queries are truncated to 50 characters
+- 4-digit timestamp suffix prevents filename conflicts
 
 ### List Available Channels
 
@@ -392,35 +417,41 @@ mwb search "!KiKA Lernen <15" -s 20
 mwb search "Universität Vorlesung >45"
 
 # Create VLC playlist with educational content
+# Creates file: mwb_Bildung_Wissenschaft_m30_1234.m3u
 mwb search "Bildung Wissenschaft >30" -s 15 -v
 ```
 
 ### VLC Playlist for Binge Watching
 ```bash
 # Create a playlist of all Tatort episodes over 80 minutes for weekend viewing
-# Playlist will show dates to help identify episodes chronologically
+# Creates file: mwb_tatort_m80_1234.m3u with chronological dates
 mwb search "tatort >80" -s 50 -v
 
 # Arte documentaries for educational viewing session with broadcast dates
+# Creates file: mwb__Arte_dokumentation_m45_1234.m3u  
 mwb search "!Arte dokumentation >45" -s 20 -e "trailer|preview" -v
 
 # Crime series marathon - exclude short clips and audio descriptions
-# Dates help identify which episodes you've already watched
+# Creates file: mwb_krimi_investigation_m70_1234.m3u with episode dates
 mwb search "krimi investigation >70" -s 30 -e "audio|kurz|short" -v
 
 # International content playlist from specific channels with chronological info
+# Creates file: mwb__Arte__3Sat_m60_1234.m3u
 mwb search "!Arte !3Sat >60" -s 25 -i "deutsch|german|english" -v
 ```
 
 ### Curated Content Collections
 ```bash
 # Create themed playlists for specific interests with broadcast dates
+# Creates file: mwb_wissenschaft_physik_astronomie_m40_1234.m3u
 mwb search "wissenschaft physik astronomie >40" -s 15 -v
 
 # Historical documentaries playlist - dates help avoid duplicates
+# Creates file: mwb_geschichte_dokumentation_m50_1234.m3u
 mwb search "geschichte dokumentation >50" -s 20 -e "wiederholung|repeat" -v
 
 # Nature and environment content for relaxing viewing with chronological order
+# Creates file: mwb_natur_umwelt_tiere_m30_1234.m3u
 mwb search "natur umwelt tiere >30" -s 25 -i "wild|forest|ocean" -v
 ```
 
@@ -453,7 +484,10 @@ mwb search "natur umwelt tiere >30" -s 25 -i "wild|forest|ocean" -v
    - Provides comprehensive results without being limited to specific fields
    - No need to remember selector syntax for simple searches
 
-10. **VLC Playlist Dates**: Playlists include broadcast dates in YYYY-MM-DD format to help identify content chronologically and avoid duplicates.
+10. **VLC Playlist Features**: 
+    - Filenames generated from search query (e.g., `mwb_tatort_m85_1234.m3u`)  
+    - Include broadcast dates in YYYY-MM-DD format for chronological identification
+    - Query-based naming makes playlist management easy
 
 11. **Duration Query Examples**:
     - `>90 <180` - Feature films and long documentaries

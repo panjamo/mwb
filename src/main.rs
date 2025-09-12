@@ -185,7 +185,7 @@ async fn search_content(
     let filtered_results = apply_regex_filters(result.results, exclude_patterns, include_patterns)?;
 
     if vlc {
-        create_vlc_playlist_and_launch(&filtered_results)?;
+        create_vlc_playlist_and_launch(&filtered_results, &query_terms)?;
     } else {
         match format.as_str() {
             "json" => {
@@ -323,17 +323,14 @@ async fn list_channels(client: &Mediathek) -> Result<()> {
     Ok(())
 }
 
-fn create_vlc_playlist_and_launch(results: &[mediathekviewweb::models::Item]) -> Result<()> {
+fn create_vlc_playlist_and_launch(results: &[mediathekviewweb::models::Item], query_terms: &[String]) -> Result<()> {
     if results.is_empty() {
         println!("{}", "No results found to add to playlist.".yellow());
         return Ok(());
     }
 
-    // Create playlist filename with timestamp
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_secs();
-    let playlist_name = format!("mwb_playlist_{}.m3u", timestamp);
+    // Create playlist filename from query
+    let playlist_name = generate_playlist_filename(&query_terms.join(" "));
     
     // Create M3U playlist file
     let mut file = File::create(&playlist_name)?;
@@ -393,6 +390,37 @@ fn create_vlc_playlist_and_launch(results: &[mediathekviewweb::models::Item]) ->
     }
     
     Ok(())
+}
+
+fn generate_playlist_filename(query: &str) -> String {
+    // Sanitize the query for use as filename
+    let sanitized = query
+        .chars()
+        .map(|c| match c {
+            'a'..='z' | 'A'..='Z' | '0'..='9' => c,
+            ' ' => '_',
+            '>' | '<' => 'm', // Convert > to "more", < to "less" indicator
+            _ => '_',
+        })
+        .collect::<String>()
+        .trim_matches('_')
+        .to_string();
+    
+    // Limit filename length and add timestamp suffix for uniqueness
+    let max_len = 50;
+    let truncated = if sanitized.len() > max_len {
+        format!("{}...", &sanitized[..max_len])
+    } else {
+        sanitized
+    };
+    
+    // Add short timestamp to avoid conflicts
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() % 10000; // Last 4 digits
+    
+    format!("mwb_{}_{}.m3u", truncated, timestamp)
 }
 
 fn print_table(results: &[mediathekviewweb::models::Item], query_info: &mediathekviewweb::models::QueryInfo) -> Result<()> {
