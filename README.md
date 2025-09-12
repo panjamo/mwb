@@ -110,36 +110,79 @@ mwb search "Tatort" -f json
 # CSV output for spreadsheets using short form
 mwb search "Tatort" -f csv > results.csv
 
-# Create VLC playlist and launch VLC directly
-# Creates file: mwb_Tatort_m80_1234.m3u
+# XSPF playlist output (XML Shareable Playlist Format) to stdout
+mwb search "Tatort" -f xspf
+
+# Save XSPF playlist to file with duration and date/time metadata
+# Creates file: mwb_Tatort_80_20250912_092818.xspf
+mwb search "Tatort >80" -f xspf -x
+
+# Create XSPF playlist and launch VLC directly
+# Creates file: mwb_Tatort_m80_1234.xspf
 mwb search "Tatort >80" -v
 
 # Short form for VLC playlist  
-# Creates file: mwb_dokumentation_m60_1234.m3u
+# Creates file: mwb_dokumentation_m60_1234.xspf
 mwb search "dokumentation >60" -s 10 -v
+```
+
+### XSPF Playlist Format
+
+The XSPF (XML Shareable Playlist Format) is a standardized playlist format that includes rich metadata:
+
+- **Duration**: Track duration in milliseconds
+- **Date/Time**: Original broadcast date displayed in VLC's Artist column and track titles
+- **Creator**: TV channel name
+- **Artist**: Broadcast date (YYYY-MM-DD format) - shows in VLC's Artist column
+- **Album**: Topic/theme of the content
+- **Annotation**: Full description of the content
+- **Location**: Direct video URL
+
+Example XSPF output structure:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<playlist version="1" xmlns="http://xspf.org/ns/0/">
+  <title>MediathekView Search: Tatort >80</title>
+  <creator>MWB - MediathekViewWeb CLI</creator>
+  <date>2025-09-12T07:28:18Z</date>
+  <trackList>
+    <track>
+      <title>Kollaps (2015) (2025-10-14)</title>
+      <creator>WDR</creator>
+      <artist>2025-10-14</artist>
+      <album>Tatort</album>
+      <location>https://example.com/video.mp4</location>
+      <duration>5310000</duration>
+      <annotation>Episode description...</annotation>
+    </track>
+  </trackList>
+</playlist>
 ```
 
 ### VLC Playlist Integration
 
+The VLC integration now uses XSPF format instead of M3U for richer metadata support. VLC fully supports XSPF playlists and can display the additional information like duration, broadcast date, and descriptions. Broadcast dates are displayed in VLC's Artist column and also included in track titles for maximum visibility.
+
 ```bash
-# Create playlist and launch VLC with search results
-# Creates file: mwb_tatort_m85_1234.m3u
+# Create XSPF playlist and launch VLC with search results
+# Creates file: mwb_tatort_m85_1234.xspf
 mwb search "tatort >85" --vlc
 
 # Use short form and combine with other options
-# Creates file: mwb_dokumentation_climate_change_m30_1234.m3u  
+# Creates file: mwb_dokumentation_climate_change_m30_1234.xspf  
 mwb search "dokumentation climate change >30" -s 20 -e "weather" -v
 
 # VLC integration works with all search features
-# Creates file: mwb__Arte_m60_m120_1234.m3u
+# Creates file: mwb__Arte_m60_m120_1234.xspf
 mwb search "!Arte >60 <120" -v
 ```
 
 The VLC feature:
-- Creates an M3U playlist file with query-based naming (e.g., `mwb_tatort_m85_1234.m3u`)
+- Creates an XSPF playlist file with query-based naming (e.g., `mwb_tatort_m85_1234.xspf`)
 - Filename reflects search terms and duration filters for easy identification
-- Includes proper metadata (channel, title, broadcast date) for each video
-- Date format: YYYY-MM-DD (e.g., "ARD - Tatort: Episode Title (2025-09-12)")
+- Includes rich metadata: duration (milliseconds), broadcast date/time (ISO 8601), channel, topic, descriptions
+- Broadcast dates displayed in VLC's Artist column and track titles for optimal visibility
+- Full XSPF format with proper XML structure and metadata tags
 - Automatically launches VLC with the playlist
 - Works on Windows (tries common VLC installation paths) and Unix-like systems
 - Falls back gracefully if VLC cannot be launched - playlist file is still created
@@ -148,12 +191,12 @@ The VLC feature:
 
 Playlist files are named based on your search query for easy identification:
 
-- **Format**: `mwb_<search_terms>_<duration>_<timestamp>.m3u`
+- **Format**: `mwb_<search_terms>_<duration>_<timestamp>.xspf`
 - **Examples**:
-  - `"tatort >85"` → `mwb_tatort_m85_1234.m3u`
-  - `"dokumentation klima >30 <90"` → `mwb_dokumentation_klima_m30_m90_1234.m3u`
-  - `"!Arte >60"` → `mwb__Arte_m60_1234.m3u`
-  - `">120"` → `mwb_m120_1234.m3u`
+  - `"tatort >85"` → `mwb_tatort_m85_1234.xspf`
+  - `"dokumentation klima >30 <90"` → `mwb_dokumentation_klima_m30_m90_1234.xspf`
+  - `"!Arte >60"` → `mwb__Arte_m60_1234.xspf`
+  - `">120"` → `mwb_m120_1234.xspf`
 
 **Character conversion**:
 - Spaces → `_` (underscore)

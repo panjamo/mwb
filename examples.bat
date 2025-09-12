@@ -93,6 +93,34 @@ echo mwb search "!Arte" --size 3 --format json
 echo.
 mwb search "!Arte" --size 3 --format json
 echo.
+echo Press any key to continue...
+pause >nul
+
+echo.
+echo 11. Create XSPF playlist and launch VLC:
+echo mwb search "Tatort >80" --vlc --size 5
+echo.
+mwb search "Tatort >80" --vlc --size 5
+echo.
+echo Press any key to continue...
+pause >nul
+
+echo.
+echo 12. Save XSPF playlist to file (without launching VLC):
+echo mwb search "Dokumentation >60" --format xspf --xspf-file --size 10
+echo.
+mwb search "Dokumentation >60" --format xspf --xspf-file --size 10
+echo.
+echo Press any key to continue...
+pause >nul
+
+echo.
+echo 13. XSPF output to console for piping:
+echo mwb search "Natur" --format xspf --size 5 ^> nature_playlist.xspf
+echo.
+mwb search "Natur" --format xspf --size 5 > nature_playlist.xspf
+echo XSPF playlist saved to nature_playlist.xspf
+echo.
 
 echo.
 echo Examples completed! Try creating your own searches using:
@@ -100,9 +128,11 @@ echo   Selectors: !channel #theme +title *description
 echo   Duration: --min-duration X --max-duration Y (in minutes)
 echo   Regex Exclusion: --exclude "pattern1" "pattern2"
 echo   Regex Inclusion: --include "pattern1" "pattern2"
-echo   Formats: --format table/json/csv
+echo   Formats: --format table/json/csv/xspf
 echo   Regex Examples: "word1|word2", "\bexact\b", "word.*", "[Tt]atort"
 echo   Combined: mwb search "Dokumentation" --include "Klima|Natur" --min-duration 30
+echo   VLC XSPF: mwb search "Tatort >80" --vlc (creates XSPF and launches VLC)
+echo   XSPF File: mwb search "query" --format xspf --xspf-file
 echo.
 echo Press any key to exit...
 pause >nul

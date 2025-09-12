@@ -57,13 +57,17 @@ enum Commands {
         #[arg(long = "no-future")]
         exclude_future: bool,
         
-        /// Output format (table, json, csv)
+        /// Output format (table, json, csv, xspf)
         #[arg(short = 'f', long, default_value = "table")]
         format: String,
         
-        /// Save video links as VLC playlist and launch VLC
+        /// Save video links as XSPF playlist and launch VLC
         #[arg(short = 'v', long)]
         vlc: bool,
+        
+        /// Save XSPF playlist to file (use with -f xspf)
+        #[arg(short = 'x', long)]
+        xspf_file: bool,
         
 
     },
@@ -91,6 +95,7 @@ async fn main() -> Result<()> {
             exclude_future,
             format,
             vlc,
+            xspf_file,
         } => {
             search_content(
                 &client,
@@ -104,6 +109,7 @@ async fn main() -> Result<()> {
                 exclude_future,
                 format,
                 vlc,
+                xspf_file,
             ).await?;
         }
         Commands::Channels => {
@@ -126,6 +132,7 @@ async fn search_content(
     exclude_future: bool,
     format: String,
     vlc: bool,
+    xspf_file: bool,
 ) -> Result<()> {
     let query_string = query_terms.join(" ");
     
@@ -193,6 +200,13 @@ async fn search_content(
             }
             "csv" => {
                 print_csv(&filtered_results)?;
+            }
+            "xspf" => {
+                if xspf_file {
+                    save_xspf_playlist(&filtered_results, &query_terms)?;
+                } else {
+                    print_xspf(&filtered_results, &query_terms.join(" "))?;
+                }
             }
             _ => {
                 print_table(&filtered_results, &result.query_info)?;
@@ -329,28 +343,17 @@ fn create_vlc_playlist_and_launch(results: &[mediathekviewweb::models::Item], qu
         return Ok(());
     }
 
-    // Create playlist filename from query
-    let playlist_name = generate_playlist_filename(&query_terms.join(" "));
+    // Create playlist filename from query (now XSPF)
+    let playlist_name = generate_vlc_playlist_filename(&query_terms.join(" "));
     
-    // Create M3U playlist file
+    // Generate XSPF content
+    let xspf_content = generate_xspf_content(results, &query_terms.join(" "))?;
+    
+    // Write to file
     let mut file = File::create(&playlist_name)?;
-    writeln!(file, "#EXTM3U")?;
+    writeln!(file, "{}", xspf_content)?;
     
-    for entry in results.iter() {
-        // Format the date from timestamp
-        let date_str = if let Some(dt) = chrono::DateTime::from_timestamp(entry.timestamp, 0) {
-            dt.format("%Y-%m-%d").to_string()
-        } else {
-            "Unknown".to_string()
-        };
-        
-        // Write entry info as comment with date
-        writeln!(file, "#EXTINF:-1,{} - {} ({})", entry.channel, entry.title, date_str)?;
-        // Write video URL
-        writeln!(file, "{}", entry.url_video)?;
-    }
-    
-    println!("{}", format!("Created playlist: {}", playlist_name).green());
+    println!("{}", format!("Created XSPF playlist: {}", playlist_name).green());
     println!("{}", format!("Added {} video(s) to playlist", results.len()).green());
     
     // Try to launch VLC with the playlist
@@ -392,7 +395,7 @@ fn create_vlc_playlist_and_launch(results: &[mediathekviewweb::models::Item], qu
     Ok(())
 }
 
-fn generate_playlist_filename(query: &str) -> String {
+fn generate_vlc_playlist_filename(query: &str) -> String {
     // Sanitize the query for use as filename
     let sanitized = query
         .chars()
@@ -420,7 +423,7 @@ fn generate_playlist_filename(query: &str) -> String {
         .unwrap_or_default()
         .as_secs() % 10000; // Last 4 digits
     
-    format!("mwb_{}_{}.m3u", truncated, timestamp)
+    format!("mwb_{}_{}.xspf", truncated, timestamp)
 }
 
 fn print_table(results: &[mediathekviewweb::models::Item], query_info: &mediathekviewweb::models::QueryInfo) -> Result<()> {
@@ -499,4 +502,119 @@ fn print_csv(results: &[mediathekviewweb::models::Item]) -> Result<()> {
     }
     
     Ok(())
+}
+
+fn print_xspf(results: &[mediathekviewweb::models::Item], query: &str) -> Result<()> {
+    let xspf_content = generate_xspf_content(results, query)?;
+    println!("{}", xspf_content);
+    Ok(())
+}
+
+/// Generates complete XSPF playlist content as a string
+/// 
+/// This unified function creates XSPF (XML Shareable Playlist Format) content
+/// with rich metadata including duration, broadcast dates, and descriptions.
+/// 
+/// # Arguments
+/// * `results` - Array of MediathekView items to include in playlist
+/// * `query` - Search query string used for playlist title
+/// 
+/// # Returns
+/// * `Result<String>` - Complete XSPF XML content or error
+fn generate_xspf_content(results: &[mediathekviewweb::models::Item], query: &str) -> Result<String> {
+    // Pre-allocate capacity to reduce reallocations (header + ~512 chars per track)
+    let mut content = String::with_capacity(1024 + results.len() * 512);
+    
+    content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    content.push_str("<playlist version=\"1\" xmlns=\"http://xspf.org/ns/0/\">\n");
+    content.push_str(&format!("  <title>MediathekView Search: {}</title>\n", escape_xml(query)));
+    content.push_str("  <creator>MWB - MediathekViewWeb CLI</creator>\n");
+    content.push_str(&format!("  <date>{}</date>\n", chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ")));
+    content.push_str("  <trackList>\n");
+    
+    // Generate track entries with metadata
+    for entry in results {
+        let duration_ms = entry.duration.map_or(0, |d| d.as_millis() as u64);
+        let date_readable = DateTime::from_timestamp(entry.timestamp, 0)
+            .map(|dt| dt.format("%Y-%m-%d").to_string())
+            .unwrap_or_default();
+        
+        content.push_str("    <track>\n");
+        // Include date in title for VLC visibility
+        let title_with_date = if !date_readable.is_empty() {
+            format!("{} ({})", entry.title, date_readable)
+        } else {
+            entry.title.clone()
+        };
+        content.push_str(&format!("      <title>{}</title>\n", escape_xml(&title_with_date)));
+        // Use creator for channel, artist for date (VLC displays artist column)
+        content.push_str(&format!("      <creator>{}</creator>\n", escape_xml(&entry.channel)));
+        content.push_str(&format!("      <artist>{}</artist>\n", escape_xml(&date_readable)));
+        content.push_str(&format!("      <album>{}</album>\n", escape_xml(&entry.topic)));
+        content.push_str(&format!("      <location>{}</location>\n", escape_xml(&entry.url_video)));
+        if duration_ms > 0 {
+            content.push_str(&format!("      <duration>{}</duration>\n", duration_ms));
+        }
+        if let Some(description) = &entry.description {
+            if !description.is_empty() {
+                content.push_str(&format!("      <annotation>{}</annotation>\n", escape_xml(description)));
+            }
+        }
+        content.push_str("    </track>\n");
+    }
+    
+    content.push_str("  </trackList>\n");
+    content.push_str("</playlist>\n");
+    
+    Ok(content)
+}
+
+fn escape_xml(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+fn save_xspf_playlist(results: &[mediathekviewweb::models::Item], query_terms: &[String]) -> Result<()> {
+    if results.is_empty() {
+        println!("{}", "No results found to save to playlist.".yellow());
+        return Ok(());
+    }
+
+    // Create playlist filename from query (similar to VLC playlist naming)
+    let playlist_name = generate_xspf_filename(&query_terms.join(" "));
+    
+    // Generate XSPF content
+    let xspf_content = generate_xspf_content(results, &query_terms.join(" "))?;
+    
+    // Write to file
+    let mut file = File::create(&playlist_name)?;
+    writeln!(file, "{}", xspf_content)?;
+    
+    println!("{}", format!("Created XSPF playlist: {}", playlist_name).green());
+    println!("{}", format!("Added {} track(s) to playlist", results.len()).green());
+    
+    Ok(())
+}
+
+fn generate_xspf_filename(query: &str) -> String {
+    // Similar to M3U playlist naming but with .xspf extension
+    let sanitized_query = query
+        .chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+        .collect::<String>()
+        .split_whitespace()
+        .take(3) // Take first 3 words
+        .collect::<Vec<_>>()
+        .join("_");
+    
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    
+    if sanitized_query.is_empty() {
+        format!("mwb_playlist_{}.xspf", timestamp)
+    } else {
+        format!("mwb_{}_{}.xspf", sanitized_query, timestamp)
+    }
 }
