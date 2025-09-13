@@ -97,10 +97,28 @@ echo Press any key to continue...
 pause >nul
 
 echo.
-echo 11. Create XSPF playlist and launch VLC:
+echo 11. Create XSPF playlist and launch VLC (medium quality default):
 echo mwb search "Tatort >80" --vlc --size 5
 echo.
 mwb search "Tatort >80" --vlc --size 5
+echo.
+echo Press any key to continue...
+pause >nul
+
+echo.
+echo 11b. Create XSPF playlist and launch VLC with low quality:
+echo mwb search "Tatort >80" --vlc=l --size 3
+echo.
+mwb search "Tatort >80" --vlc=l --size 3
+echo.
+echo Press any key to continue...
+pause >nul
+
+echo.
+echo 11c. Create XSPF playlist and launch VLC with HD quality:
+echo mwb search "Tatort >80" -v=h --size 3
+echo.
+mwb search "Tatort >80" -v=h --size 3
 echo.
 echo Press any key to continue...
 pause >nul
@@ -131,7 +149,8 @@ echo   Regex Inclusion: --include "pattern1" "pattern2"
 echo   Formats: --format table/json/csv/xspf
 echo   Regex Examples: "word1|word2", "\bexact\b", "word.*", "[Tt]atort"
 echo   Combined: mwb search "Dokumentation" --include "Klima|Natur" --min-duration 30
-echo   VLC XSPF: mwb search "Tatort >80" --vlc (creates XSPF and launches VLC)
+echo   VLC XSPF: mwb search "Tatort >80" --vlc (medium quality, default)
+echo   VLC Quality: mwb search "Tatort" -v=l (low), -v=m (medium), -v=h (HD)
 echo   XSPF File: mwb search "query" --format xspf --xspf-file
 echo.
 echo Press any key to exit...

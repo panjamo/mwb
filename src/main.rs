@@ -61,9 +61,9 @@ enum Commands {
         #[arg(short = 'f', long, default_value = "table")]
         format: String,
         
-        /// Save video links as XSPF playlist and launch VLC
-        #[arg(short = 'v', long)]
-        vlc: bool,
+        /// Save video links as XSPF playlist and launch VLC with quality option (l=low, m=medium/default, h=HD)
+        #[arg(short = 'v', long, value_name = "QUALITY", require_equals = true, num_args = 0..=1, default_missing_value = "m")]
+        vlc: Option<String>,
         
         /// Save XSPF playlist to file (use with -f xspf)
         #[arg(short = 'x', long)]
@@ -131,7 +131,7 @@ async fn search_content(
     sort_order: String,
     exclude_future: bool,
     format: String,
-    vlc: bool,
+    vlc: Option<String>,
     xspf_file: bool,
 ) -> Result<()> {
     let query_string = query_terms.join(" ");
@@ -191,8 +191,18 @@ async fn search_content(
     // Apply client-side regex filters
     let filtered_results = apply_regex_filters(result.results, exclude_patterns, include_patterns)?;
 
-    if vlc {
-        create_vlc_playlist_and_launch(&filtered_results, &query_terms)?;
+    if let Some(quality) = vlc {
+        // Validate quality parameter and set default if invalid
+        let validated_quality = match quality.as_str() {
+            "l" | "low" => "l",
+            "h" | "hd" | "high" => "h",
+            "m" | "medium" | "" => "m",
+            _ => {
+                println!("{}", format!("Warning: Invalid quality '{}'. Using medium quality (m). Valid options: l (low), m (medium), h (HD)", quality).yellow());
+                "m"
+            }
+        };
+        create_vlc_playlist_and_launch(&filtered_results, &query_terms, validated_quality)?;
     } else {
         match format.as_str() {
             "json" => {
@@ -337,7 +347,7 @@ async fn list_channels(client: &Mediathek) -> Result<()> {
     Ok(())
 }
 
-fn create_vlc_playlist_and_launch(results: &[mediathekviewweb::models::Item], query_terms: &[String]) -> Result<()> {
+fn create_vlc_playlist_and_launch(results: &[mediathekviewweb::models::Item], query_terms: &[String], quality: &str) -> Result<()> {
     if results.is_empty() {
         println!("{}", "No results found to add to playlist.".yellow());
         return Ok(());
@@ -347,7 +357,7 @@ fn create_vlc_playlist_and_launch(results: &[mediathekviewweb::models::Item], qu
     let playlist_name = generate_vlc_playlist_filename(&query_terms.join(" "));
     
     // Generate XSPF content
-    let xspf_content = generate_xspf_content(results, &query_terms.join(" "))?;
+    let xspf_content = generate_xspf_content(results, &query_terms.join(" "), quality)?;
     
     // Write to file
     let mut file = File::create(&playlist_name)?;
@@ -505,7 +515,7 @@ fn print_csv(results: &[mediathekviewweb::models::Item]) -> Result<()> {
 }
 
 fn print_xspf(results: &[mediathekviewweb::models::Item], query: &str) -> Result<()> {
-    let xspf_content = generate_xspf_content(results, query)?;
+    let xspf_content = generate_xspf_content(results, query, "m")?;
     println!("{}", xspf_content);
     Ok(())
 }
@@ -521,7 +531,7 @@ fn print_xspf(results: &[mediathekviewweb::models::Item], query: &str) -> Result
 /// 
 /// # Returns
 /// * `Result<String>` - Complete XSPF XML content or error
-fn generate_xspf_content(results: &[mediathekviewweb::models::Item], query: &str) -> Result<String> {
+fn generate_xspf_content(results: &[mediathekviewweb::models::Item], query: &str, quality: &str) -> Result<String> {
     // Pre-allocate capacity to reduce reallocations (header + ~512 chars per track)
     let mut content = String::with_capacity(1024 + results.len() * 512);
     
@@ -551,7 +561,13 @@ fn generate_xspf_content(results: &[mediathekviewweb::models::Item], query: &str
         content.push_str(&format!("      <creator>{}</creator>\n", escape_xml(&entry.channel)));
         content.push_str(&format!("      <artist>{}</artist>\n", escape_xml(&date_readable)));
         content.push_str(&format!("      <album>{}</album>\n", escape_xml(&entry.topic)));
-        content.push_str(&format!("      <location>{}</location>\n", escape_xml(&entry.url_video)));
+        // Select video URL based on quality parameter
+        let video_url = match quality {
+            "l" | "low" => entry.url_video_low.as_ref().unwrap_or(&entry.url_video),
+            "h" | "hd" | "high" => entry.url_video_hd.as_ref().unwrap_or(&entry.url_video),
+            _ => &entry.url_video, // default to medium quality
+        };
+        content.push_str(&format!("      <location>{}</location>\n", escape_xml(video_url)));
         if duration_ms > 0 {
             content.push_str(&format!("      <duration>{}</duration>\n", duration_ms));
         }
@@ -586,8 +602,8 @@ fn save_xspf_playlist(results: &[mediathekviewweb::models::Item], query_terms: &
     // Create playlist filename from query (similar to VLC playlist naming)
     let playlist_name = generate_xspf_filename(&query_terms.join(" "));
     
-    // Generate XSPF content
-    let xspf_content = generate_xspf_content(results, &query_terms.join(" "))?;
+    // Generate XSPF content  
+    let xspf_content = generate_xspf_content(results, &query_terms.join(" "), "m")?;
     
     // Write to file
     let mut file = File::create(&playlist_name)?;

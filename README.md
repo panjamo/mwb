@@ -117,13 +117,17 @@ mwb search "Tatort" -f xspf
 # Creates file: mwb_Tatort_80_20250912_092818.xspf
 mwb search "Tatort >80" -f xspf -x
 
-# Create XSPF playlist and launch VLC directly
+# Create XSPF playlist and launch VLC directly (medium quality by default)
 # Creates file: mwb_Tatort_m80_1234.xspf
 mwb search "Tatort >80" -v
 
-# Short form for VLC playlist  
+# VLC with low quality video links (smaller file sizes, faster streaming)
 # Creates file: mwb_dokumentation_m60_1234.xspf
-mwb search "dokumentation >60" -s 10 -v
+mwb search "dokumentation >60" -s 10 -v=l
+
+# VLC with HD quality video links (when available)
+# Creates file: mwb_dokumentation_m60_1234.xspf
+mwb search "dokumentation >60" -s 10 --vlc=h
 ```
 
 ### XSPF Playlist Format
@@ -164,17 +168,22 @@ Example XSPF output structure:
 The VLC integration now uses XSPF format instead of M3U for richer metadata support. VLC fully supports XSPF playlists and can display the additional information like duration, broadcast date, and descriptions. Broadcast dates are displayed in VLC's Artist column and also included in track titles for maximum visibility.
 
 ```bash
-# Create XSPF playlist and launch VLC with search results
+# Create XSPF playlist and launch VLC with search results (medium quality default)
 # Creates file: mwb_tatort_m85_1234.xspf
 mwb search "tatort >85" --vlc
 
-# Use short form and combine with other options
+# Use short form with low quality for faster streaming
 # Creates file: mwb_dokumentation_climate_change_m30_1234.xspf  
-mwb search "dokumentation climate change >30" -s 20 -e "weather" -v
+mwb search "dokumentation climate change >30" -s 20 -e "weather" -v=l
 
-# VLC integration works with all search features
+# VLC integration with HD quality (when available)
 # Creates file: mwb__Arte_m60_m120_1234.xspf
-mwb search "!Arte >60 <120" -v
+mwb search "!Arte >60 <120" --vlc=h
+
+# Quality options: l=low, m=medium (default), h=HD
+# If no quality specified, medium quality is used
+mwb search "documentary" -v      # medium quality (default)
+mwb search "documentary" -v=m    # medium quality (explicit)
 ```
 
 The VLC feature:
@@ -226,7 +235,8 @@ OPTIONS:
     -r, --sort-order <SORT_ORDER> Sort order (asc or desc) [default: desc]
         --no-future               Exclude future content (default: include future content)
     -f, --format <FORMAT>         Output format (table, json, csv) [default: table]
-    -v, --vlc                     Save video links as VLC playlist and launch VLC
+    -v, --vlc[=<QUALITY>]         Save video links as VLC playlist and launch VLC
+                                  Quality options: l (low), m (medium, default), h (HD)
 ```
 
 ## Search Syntax Details
@@ -385,8 +395,8 @@ mwb search ">90" -s 50 -f csv > long_content.csv
 # Get JSON for documentaries over an hour (using short form)
 mwb search "#Dokumentation >60" -f json | jq '.[] | {title, duration, url_video}'
 
-# Create VLC playlist with long documentaries (using short form)
-mwb search "#Dokumentation >90" -s 25 -v
+# Create VLC playlist with long documentaries (using short form, low quality)
+mwb search "#Dokumentation >90" -s 25 -v=l
 ```
 
 ## Output Fields
@@ -459,9 +469,9 @@ mwb search "!KiKA Lernen <15" -s 20
 # University-level lectures and discussions
 mwb search "Universität Vorlesung >45"
 
-# Create VLC playlist with educational content
-# Creates file: mwb_Bildung_Wissenschaft_m30_1234.m3u
-mwb search "Bildung Wissenschaft >30" -s 15 -v
+# Create VLC playlist with educational content (HD quality)
+# Creates file: mwb_Bildung_Wissenschaft_m30_1234.xspf
+mwb search "Bildung Wissenschaft >30" --vlc=h
 ```
 
 ### VLC Playlist for Binge Watching
@@ -528,9 +538,11 @@ mwb search "natur umwelt tiere >30" -s 25 -i "wild|forest|ocean" -v
    - No need to remember selector syntax for simple searches
 
 10. **VLC Playlist Features**: 
-    - Filenames generated from search query (e.g., `mwb_tatort_m85_1234.m3u`)  
+    - Quality selection: `-v` (medium), `-v=l` (low), `-v=m` (medium), `-v=h` (HD)
+    - Filenames generated from search query (e.g., `mwb_tatort_m85_1234.xspf`)  
     - Include broadcast dates in YYYY-MM-DD format for chronological identification
     - Query-based naming makes playlist management easy
+    - Automatic fallback to medium quality if HD not available
 
 11. **Duration Query Examples**:
     - `>90 <180` - Feature films and long documentaries
@@ -549,7 +561,7 @@ mwb search "natur umwelt tiere >30" -s 25 -i "wild|forest|ocean" -v
 | `--sort-by` | `-b` | Sort field |
 | `--sort-order` | `-r` | Sort order (asc/desc) |
 | `--format` | `-f` | Output format |
-| `--vlc` | `-v` | Create VLC playlist |
+| `--vlc[=QUALITY]` | `-v[=QUALITY]` | Create VLC playlist with quality option |
 | `--no-future` | - | Exclude future content |
 
 ## Troubleshooting
@@ -558,7 +570,8 @@ mwb search "natur umwelt tiere >30" -s 25 -i "wild|forest|ocean" -v
 - **Duration Not Working**: Make sure to use `>` and `<` with numbers (minutes)
 - **API Errors**: The service might be temporarily unavailable
 - **Slow Responses**: Try reducing `--size` or using more specific selectors
-- **VLC Not Found**: If VLC doesn't launch, check your VLC installation path or manually open the created `.m3u` file
+- **VLC Not Found**: If VLC doesn't launch, check your VLC installation path or manually open the created `.xspf` file
+- **Invalid Quality**: Invalid quality parameters default to medium with a warning message
 
 ## Contributing
 
