@@ -2,14 +2,15 @@ use anyhow::Result;
 use chrono::DateTime;
 use clap::{Parser, Subcommand};
 use colored::*;
-use mediathekviewweb::{Mediathek, models::{SortField, SortOrder}};
+use mediathekviewweb::{
+    models::{SortField, SortOrder},
+    Mediathek,
+};
 use regex::Regex;
-use serde_json;
+
 use std::fs::File;
 use std::io::Write;
 use std::process::Command;
-
-
 
 #[derive(Parser)]
 #[command(name = "mwb")]
@@ -20,6 +21,21 @@ struct Cli {
     command: Commands,
 }
 
+#[derive(Debug)]
+struct SearchParams {
+    query_terms: Vec<String>,
+    exclude_patterns: Option<Vec<String>>,
+    include_patterns: Option<Vec<String>>,
+    size: u32,
+    offset: u32,
+    sort_by: String,
+    sort_order: String,
+    exclude_future: bool,
+    format: String,
+    vlc: Option<String>,
+    xspf_file: bool,
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Search for content
@@ -28,48 +44,46 @@ enum Commands {
         /// Duration examples: ">90" (longer than 90min), "<30" (shorter than 30min), ">60 <120" (between 60-120min)
         #[arg(required = true)]
         query: Vec<String>,
-        
+
         /// Exclude regex patterns (space-separated)
         #[arg(short, long)]
         exclude: Option<Vec<String>>,
-        
+
         /// Include regex patterns - only show results matching these patterns (space-separated)
         #[arg(short, long)]
         include: Option<Vec<String>>,
-        
+
         /// Maximum number of results
         #[arg(short, long, default_value = "15")]
         size: u32,
-        
+
         /// Offset for pagination
         #[arg(short, long, default_value = "0")]
         offset: u32,
-        
+
         /// Sort by field (timestamp, duration, channel)
         #[arg(short = 'b', long, default_value = "timestamp")]
         sort_by: String,
-        
+
         /// Sort order (asc or desc)
         #[arg(short = 'r', long, default_value = "desc")]
         sort_order: String,
-        
+
         /// Exclude future content (default: include future content)
         #[arg(long = "no-future")]
         exclude_future: bool,
-        
+
         /// Output format (table, json, csv, xspf)
         #[arg(short = 'f', long, default_value = "table")]
         format: String,
-        
+
         /// Save video links as XSPF playlist and launch VLC with quality option (l=low, m=medium/default, h=HD)
         #[arg(short = 'v', long, value_name = "QUALITY", require_equals = true, num_args = 0..=1, default_missing_value = "m")]
         vlc: Option<String>,
-        
+
         /// Save XSPF playlist to file (use with -f xspf)
         #[arg(short = 'x', long)]
         xspf_file: bool,
-        
-
     },
     /// List available channels
     Channels,
@@ -80,7 +94,7 @@ const USER_AGENT: &str = "mwb-cli/1.0";
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    
+
     let client = Mediathek::new(USER_AGENT.parse()?)?;
 
     match cli.command {
@@ -97,11 +111,10 @@ async fn main() -> Result<()> {
             vlc,
             xspf_file,
         } => {
-            search_content(
-                &client,
-                query,
-                exclude,
-                include,
+            let params = SearchParams {
+                query_terms: query,
+                exclude_patterns: exclude,
+                include_patterns: include,
                 size,
                 offset,
                 sort_by,
@@ -110,7 +123,8 @@ async fn main() -> Result<()> {
                 format,
                 vlc,
                 xspf_file,
-            ).await?;
+            };
+            search_content(&client, params).await?;
         }
         Commands::Channels => {
             list_channels(&client).await?;
@@ -120,25 +134,12 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn search_content(
-    client: &Mediathek,
-    query_terms: Vec<String>,
-    exclude_patterns: Option<Vec<String>>,
-    include_patterns: Option<Vec<String>>,
-    size: u32,
-    offset: u32,
-    sort_by: String,
-    sort_order: String,
-    exclude_future: bool,
-    format: String,
-    vlc: Option<String>,
-    xspf_file: bool,
-) -> Result<()> {
-    let query_string = query_terms.join(" ");
-    
+async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> {
+    let query_string = params.query_terms.join(" ");
+
     // Preprocess query to extract duration selectors and search terms
     let (search_terms_only, duration_filters) = extract_duration_selectors(&query_string);
-    
+
     // Build the query using the mediathekviewweb crate
     // Use search terms without duration selectors for natural all-field search
     let mut query_builder = if search_terms_only.is_empty() {
@@ -148,50 +149,54 @@ async fn search_content(
         // Let the API handle natural search across all fields
         client.query_string(&search_terms_only, false)
     };
-    
+
     // Apply duration filters extracted from the query
     for filter in duration_filters {
-        if filter.starts_with('>') {
-            if let Ok(min_duration) = filter[1..].parse::<u64>() {
-                query_builder = query_builder.duration_min(std::time::Duration::from_secs(min_duration * 60));
+        if let Some(duration_str) = filter.strip_prefix('>') {
+            if let Ok(min_duration) = duration_str.parse::<u64>() {
+                query_builder =
+                    query_builder.duration_min(std::time::Duration::from_secs(min_duration * 60));
             }
-        } else if filter.starts_with('<') {
-            if let Ok(max_duration) = filter[1..].parse::<u64>() {
-                query_builder = query_builder.duration_max(std::time::Duration::from_secs(max_duration * 60));
+        } else if let Some(duration_str) = filter.strip_prefix('<') {
+            if let Ok(max_duration) = duration_str.parse::<u64>() {
+                query_builder =
+                    query_builder.duration_max(std::time::Duration::from_secs(max_duration * 60));
             }
         }
     }
-    
+
     // Apply other parameters
     query_builder = query_builder
-        .include_future(!exclude_future)
-        .size(size as usize)
-        .offset(offset as usize);
-    
+        .include_future(!params.exclude_future)
+        .size(params.size as usize)
+        .offset(params.offset as usize);
+
     // Apply sorting
-    let sort_field = match sort_by.as_str() {
+    let sort_field = match params.sort_by.as_str() {
         "timestamp" => SortField::Timestamp,
         "duration" => SortField::Duration,
         "channel" => SortField::Channel,
         _ => SortField::Timestamp,
     };
-    
-    let sort_direction = match sort_order.as_str() {
+
+    let sort_direction = match params.sort_order.as_str() {
         "asc" => SortOrder::Ascending,
         _ => SortOrder::Descending,
     };
-    
-    query_builder = query_builder
-        .sort_by(sort_field)
-        .sort_order(sort_direction);
-    
+
+    query_builder = query_builder.sort_by(sort_field).sort_order(sort_direction);
+
     // Execute the query
     let result = query_builder.send().await?;
-    
-    // Apply client-side regex filters
-    let filtered_results = apply_regex_filters(result.results, exclude_patterns, include_patterns)?;
 
-    if let Some(quality) = vlc {
+    // Apply client-side regex filters
+    let filtered_results = apply_regex_filters(
+        result.results,
+        params.exclude_patterns,
+        params.include_patterns,
+    )?;
+
+    if let Some(quality) = params.vlc {
         // Validate quality parameter and set default if invalid
         let validated_quality = match quality.as_str() {
             "l" | "low" => "l",
@@ -202,9 +207,9 @@ async fn search_content(
                 "m"
             }
         };
-        create_vlc_playlist_and_launch(&filtered_results, &query_terms, validated_quality)?;
+        create_vlc_playlist_and_launch(&filtered_results, &params.query_terms, validated_quality)?;
     } else {
-        match format.as_str() {
+        match params.format.as_str() {
             "json" => {
                 println!("{}", serde_json::to_string_pretty(&filtered_results)?);
             }
@@ -212,10 +217,10 @@ async fn search_content(
                 print_csv(&filtered_results)?;
             }
             "xspf" => {
-                if xspf_file {
-                    save_xspf_playlist(&filtered_results, &query_terms)?;
+                if params.xspf_file {
+                    save_xspf_playlist(&filtered_results, &params.query_terms)?;
                 } else {
-                    print_xspf(&filtered_results, &query_terms.join(" "))?;
+                    print_xspf(&filtered_results, &params.query_terms.join(" "))?;
                 }
             }
             _ => {
@@ -230,17 +235,17 @@ async fn search_content(
 fn extract_duration_selectors(query: &str) -> (String, Vec<String>) {
     // Check if query contains duration selectors (>X or <X patterns)
     let duration_pattern = regex::Regex::new(r"[><]\d+").unwrap();
-    
+
     if !duration_pattern.is_match(query) {
         // No duration selectors, return original query and empty filters
         return (query.to_string(), Vec::new());
     }
-    
+
     // Split query into tokens
     let tokens: Vec<&str> = query.split_whitespace().collect();
     let mut search_terms = Vec::new();
     let mut duration_selectors = Vec::new();
-    
+
     for token in tokens {
         if duration_pattern.is_match(token) {
             duration_selectors.push(token.to_string());
@@ -249,7 +254,7 @@ fn extract_duration_selectors(query: &str) -> (String, Vec<String>) {
             search_terms.push(token);
         }
     }
-    
+
     // Return search terms and duration filters separately
     let search_query = search_terms.join(" ");
     (search_query, duration_selectors)
@@ -258,10 +263,10 @@ fn extract_duration_selectors(query: &str) -> (String, Vec<String>) {
 fn apply_regex_filters(
     results: Vec<mediathekviewweb::models::Item>,
     exclude_patterns: Option<Vec<String>>,
-    include_patterns: Option<Vec<String>>
+    include_patterns: Option<Vec<String>>,
 ) -> Result<Vec<mediathekviewweb::models::Item>> {
     let mut filtered_results = results;
-    
+
     // Apply exclude regex patterns
     if let Some(exclude_terms) = exclude_patterns {
         if !exclude_terms.is_empty() {
@@ -269,28 +274,28 @@ fn apply_regex_filters(
                 .iter()
                 .map(|pattern| Regex::new(&format!("(?i){}", pattern)))
                 .collect();
-            
-            let exclude_regexes = exclude_regexes.map_err(|e| anyhow::anyhow!("Invalid exclude regex: {}", e))?;
-            
-            filtered_results = filtered_results
-                .into_iter()
-                .filter(|entry| {
-                    let text_fields = vec![
-                        entry.channel.as_str(),
-                        &entry.topic,
-                        &entry.title,
-                        entry.description.as_deref().unwrap_or(""),
-                    ];
-                    
-                    let combined_text = text_fields.join(" ");
-                    
-                    // Return true (keep) if none of the exclude patterns match
-                    !exclude_regexes.iter().any(|pattern| pattern.is_match(&combined_text))
-                })
-                .collect();
+
+            let exclude_regexes =
+                exclude_regexes.map_err(|e| anyhow::anyhow!("Invalid exclude regex: {}", e))?;
+
+            filtered_results.retain(|entry| {
+                let text_fields = [
+                    entry.channel.as_str(),
+                    &entry.topic,
+                    &entry.title,
+                    entry.description.as_deref().unwrap_or(""),
+                ];
+
+                let combined_text = text_fields.join(" ");
+
+                // Return true (keep) if none of the exclude patterns match
+                !exclude_regexes
+                    .iter()
+                    .any(|pattern| pattern.is_match(&combined_text))
+            });
         }
     }
-    
+
     // Apply include regex patterns
     if let Some(include_terms) = include_patterns {
         if !include_terms.is_empty() {
@@ -298,41 +303,45 @@ fn apply_regex_filters(
                 .iter()
                 .map(|pattern| Regex::new(&format!("(?i){}", pattern)))
                 .collect();
-            
-            let include_regexes = include_regexes.map_err(|e| anyhow::anyhow!("Invalid include regex: {}", e))?;
-            
-            filtered_results = filtered_results
-                .into_iter()
-                .filter(|entry| {
-                    let text_fields = vec![
-                        entry.channel.as_str(),
-                        &entry.topic,
-                        &entry.title,
-                        entry.description.as_deref().unwrap_or(""),
-                    ];
-                    
-                    let combined_text = text_fields.join(" ");
-                    
-                    // Return true (keep) if any of the include patterns match
-                    include_regexes.iter().any(|pattern| pattern.is_match(&combined_text))
-                })
-                .collect();
+
+            let include_regexes =
+                include_regexes.map_err(|e| anyhow::anyhow!("Invalid include regex: {}", e))?;
+
+            filtered_results.retain(|entry| {
+                let text_fields = [
+                    entry.channel.as_str(),
+                    &entry.topic,
+                    &entry.title,
+                    entry.description.as_deref().unwrap_or(""),
+                ];
+
+                let combined_text = text_fields.join(" ");
+
+                // Return true (keep) if any of the include patterns match
+                include_regexes
+                    .iter()
+                    .any(|pattern| pattern.is_match(&combined_text))
+            });
         }
     }
-    
+
     Ok(filtered_results)
 }
 
 async fn list_channels(client: &Mediathek) -> Result<()> {
     // Get channels by making a wildcard query and extracting unique channels
     let result = client.query_string("", true).size(1000).send().await?;
-    let mut channels: Vec<String> = result.results.iter().map(|item| item.channel.clone()).collect();
+    let mut channels: Vec<String> = result
+        .results
+        .iter()
+        .map(|item| item.channel.clone())
+        .collect();
     channels.sort();
     channels.dedup();
-    
+
     println!("{}", "Available Channels:".bold().blue());
     println!();
-    
+
     for (i, channel) in channels.iter().enumerate() {
         if i % 4 == 0 && i > 0 {
             println!();
@@ -341,13 +350,25 @@ async fn list_channels(client: &Mediathek) -> Result<()> {
     }
     println!();
     println!();
-    println!("{}: Use {} to filter by channel", "Tip".yellow(), "!CHANNEL".cyan());
-    println!("{}: Use {} for duration filtering", "Tip".yellow(), ">90 <120".cyan());
+    println!(
+        "{}: Use {} to filter by channel",
+        "Tip".yellow(),
+        "!CHANNEL".cyan()
+    );
+    println!(
+        "{}: Use {} for duration filtering",
+        "Tip".yellow(),
+        ">90 <120".cyan()
+    );
 
     Ok(())
 }
 
-fn create_vlc_playlist_and_launch(results: &[mediathekviewweb::models::Item], query_terms: &[String], quality: &str) -> Result<()> {
+fn create_vlc_playlist_and_launch(
+    results: &[mediathekviewweb::models::Item],
+    query_terms: &[String],
+    quality: &str,
+) -> Result<()> {
     if results.is_empty() {
         println!("{}", "No results found to add to playlist.".yellow());
         return Ok(());
@@ -355,20 +376,26 @@ fn create_vlc_playlist_and_launch(results: &[mediathekviewweb::models::Item], qu
 
     // Create playlist filename from query (now XSPF)
     let playlist_name = generate_vlc_playlist_filename(&query_terms.join(" "));
-    
+
     // Generate XSPF content
     let xspf_content = generate_xspf_content(results, &query_terms.join(" "), quality)?;
-    
+
     // Write to file
     let mut file = File::create(&playlist_name)?;
     writeln!(file, "{}", xspf_content)?;
-    
-    println!("{}", format!("Created XSPF playlist: {}", playlist_name).green());
-    println!("{}", format!("Added {} video(s) to playlist", results.len()).green());
-    
+
+    println!(
+        "{}",
+        format!("Created XSPF playlist: {}", playlist_name).green()
+    );
+    println!(
+        "{}",
+        format!("Added {} video(s) to playlist", results.len()).green()
+    );
+
     // Try to launch VLC with the playlist
     println!("{}", "Launching VLC...".yellow());
-    
+
     let vlc_result = if cfg!(target_os = "windows") {
         // Try common VLC paths on Windows
         Command::new("vlc")
@@ -386,22 +413,23 @@ fn create_vlc_playlist_and_launch(results: &[mediathekviewweb::models::Item], qu
             })
     } else {
         // Try VLC on Unix-like systems
-        Command::new("vlc")
-            .arg(&playlist_name)
-            .spawn()
+        Command::new("vlc").arg(&playlist_name).spawn()
     };
-    
+
     match vlc_result {
         Ok(_) => {
             println!("{}", "VLC launched successfully!".green());
         }
         Err(e) => {
             println!("{}", format!("Failed to launch VLC: {}", e).red());
-            println!("{}", format!("Playlist saved as: {}", playlist_name).yellow());
+            println!(
+                "{}",
+                format!("Playlist saved as: {}", playlist_name).yellow()
+            );
             println!("{}", "You can manually open this file with VLC.".yellow());
         }
     }
-    
+
     Ok(())
 }
 
@@ -418,7 +446,7 @@ fn generate_vlc_playlist_filename(query: &str) -> String {
         .collect::<String>()
         .trim_matches('_')
         .to_string();
-    
+
     // Limit filename length and add timestamp suffix for uniqueness
     let max_len = 50;
     let truncated = if sanitized.len() > max_len {
@@ -426,21 +454,31 @@ fn generate_vlc_playlist_filename(query: &str) -> String {
     } else {
         sanitized
     };
-    
+
     // Add short timestamp to avoid conflicts
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
-        .as_secs() % 10000; // Last 4 digits
-    
+        .as_secs()
+        % 10000; // Last 4 digits
+
     format!("mwb_{}_{}.xspf", truncated, timestamp)
 }
 
-fn print_table(results: &[mediathekviewweb::models::Item], query_info: &mediathekviewweb::models::QueryInfo) -> Result<()> {
+fn print_table(
+    results: &[mediathekviewweb::models::Item],
+    query_info: &mediathekviewweb::models::QueryInfo,
+) -> Result<()> {
     println!("{}", "Search Results".bold().blue());
-    println!("Total results: {}", query_info.total_results.to_string().green());
+    println!(
+        "Total results: {}",
+        query_info.total_results.to_string().green()
+    );
     println!("Showing: {}", query_info.result_count.to_string().green());
-    println!("Search time: {}ms", format!("{:.2}", query_info.search_engine_time.as_millis()).yellow());
+    println!(
+        "Search time: {}ms",
+        format!("{:.2}", query_info.search_engine_time.as_millis()).yellow()
+    );
     println!();
 
     if results.is_empty() {
@@ -449,29 +487,43 @@ fn print_table(results: &[mediathekviewweb::models::Item], query_info: &mediathe
     }
 
     for (i, entry) in results.iter().enumerate() {
-        println!("{} {}", format!("{}.", i + 1).blue().bold(), "─".repeat(60).blue());
-        
+        println!(
+            "{} {}",
+            format!("{}.", i + 1).blue().bold(),
+            "─".repeat(60).blue()
+        );
+
         println!("{}: {}", "Channel".bold(), entry.channel.green());
         println!("{}: {}", "Theme".bold(), entry.topic.cyan());
         println!("{}: {}", "Title".bold(), entry.title.bright_white());
-        
+
         let duration_secs = entry.duration.map_or(0, |d| d.as_secs());
         let hours = duration_secs / 3600;
         let minutes = (duration_secs % 3600) / 60;
         let seconds = duration_secs % 60;
-        
+
         if hours > 0 {
-            println!("{}: {}h {}m {}s", "Duration".bold(), hours, minutes, seconds);
+            println!(
+                "{}: {}h {}m {}s",
+                "Duration".bold(),
+                hours,
+                minutes,
+                seconds
+            );
         } else {
             println!("{}: {}m {}s", "Duration".bold(), minutes, seconds);
         }
-        
+
         if let Some(dt) = DateTime::from_timestamp(entry.timestamp, 0) {
-            println!("{}: {}", "Date".bold(), dt.format("%Y-%m-%d %H:%M").to_string().yellow());
+            println!(
+                "{}: {}",
+                "Date".bold(),
+                dt.format("%Y-%m-%d %H:%M").to_string().yellow()
+            );
         }
-        
+
         println!("{}: {}", "Video URL".bold(), entry.url_video.bright_blue());
-        
+
         if let Some(ref description) = entry.description {
             if !description.is_empty() && description.len() > 10 {
                 let desc = if description.chars().count() > 200 {
@@ -483,7 +535,7 @@ fn print_table(results: &[mediathekviewweb::models::Item], query_info: &mediathe
                 println!("{}: {}", "Description".bold(), desc.bright_black());
             }
         }
-        
+
         println!();
     }
 
@@ -492,13 +544,15 @@ fn print_table(results: &[mediathekviewweb::models::Item], query_info: &mediathe
 
 fn print_csv(results: &[mediathekviewweb::models::Item]) -> Result<()> {
     println!("Channel,Theme,Title,Duration,Date,URL,Description");
-    
+
     for entry in results {
-        let duration = entry.duration.map_or("0".to_string(), |d| d.as_secs().to_string());
+        let duration = entry
+            .duration
+            .map_or("0".to_string(), |d| d.as_secs().to_string());
         let date = DateTime::from_timestamp(entry.timestamp, 0)
             .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
             .unwrap_or_default();
-        
+
         println!(
             "\"{}\",\"{}\",\"{}\",\"{}\",\"{}\",\"{}\",\"{}\"",
             entry.channel.replace('"', "\"\""),
@@ -507,10 +561,14 @@ fn print_csv(results: &[mediathekviewweb::models::Item]) -> Result<()> {
             duration,
             date,
             entry.url_video,
-            entry.description.as_deref().unwrap_or("").replace('"', "\"\"")
+            entry
+                .description
+                .as_deref()
+                .unwrap_or("")
+                .replace('"', "\"\"")
         );
     }
-    
+
     Ok(())
 }
 
@@ -521,34 +579,44 @@ fn print_xspf(results: &[mediathekviewweb::models::Item], query: &str) -> Result
 }
 
 /// Generates complete XSPF playlist content as a string
-/// 
+///
 /// This unified function creates XSPF (XML Shareable Playlist Format) content
 /// with rich metadata including duration, broadcast dates, and descriptions.
-/// 
+///
 /// # Arguments
 /// * `results` - Array of MediathekView items to include in playlist
 /// * `query` - Search query string used for playlist title
-/// 
+///
 /// # Returns
 /// * `Result<String>` - Complete XSPF XML content or error
-fn generate_xspf_content(results: &[mediathekviewweb::models::Item], query: &str, quality: &str) -> Result<String> {
+fn generate_xspf_content(
+    results: &[mediathekviewweb::models::Item],
+    query: &str,
+    quality: &str,
+) -> Result<String> {
     // Pre-allocate capacity to reduce reallocations (header + ~512 chars per track)
     let mut content = String::with_capacity(1024 + results.len() * 512);
-    
+
     content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     content.push_str("<playlist version=\"1\" xmlns=\"http://xspf.org/ns/0/\">\n");
-    content.push_str(&format!("  <title>MediathekView Search: {}</title>\n", escape_xml(query)));
+    content.push_str(&format!(
+        "  <title>MediathekView Search: {}</title>\n",
+        escape_xml(query)
+    ));
     content.push_str("  <creator>MWB - MediathekViewWeb CLI</creator>\n");
-    content.push_str(&format!("  <date>{}</date>\n", chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ")));
+    content.push_str(&format!(
+        "  <date>{}</date>\n",
+        chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
+    ));
     content.push_str("  <trackList>\n");
-    
+
     // Generate track entries with metadata
     for entry in results {
         let duration_ms = entry.duration.map_or(0, |d| d.as_millis() as u64);
         let date_readable = DateTime::from_timestamp(entry.timestamp, 0)
             .map(|dt| dt.format("%Y-%m-%d").to_string())
             .unwrap_or_default();
-        
+
         content.push_str("    <track>\n");
         // Include date in title for VLC visibility
         let title_with_date = if !date_readable.is_empty() {
@@ -556,32 +624,50 @@ fn generate_xspf_content(results: &[mediathekviewweb::models::Item], query: &str
         } else {
             entry.title.clone()
         };
-        content.push_str(&format!("      <title>{}</title>\n", escape_xml(&title_with_date)));
+        content.push_str(&format!(
+            "      <title>{}</title>\n",
+            escape_xml(&title_with_date)
+        ));
         // Use creator for channel, artist for date (VLC displays artist column)
-        content.push_str(&format!("      <creator>{}</creator>\n", escape_xml(&entry.channel)));
-        content.push_str(&format!("      <artist>{}</artist>\n", escape_xml(&date_readable)));
-        content.push_str(&format!("      <album>{}</album>\n", escape_xml(&entry.topic)));
+        content.push_str(&format!(
+            "      <creator>{}</creator>\n",
+            escape_xml(&entry.channel)
+        ));
+        content.push_str(&format!(
+            "      <artist>{}</artist>\n",
+            escape_xml(&date_readable)
+        ));
+        content.push_str(&format!(
+            "      <album>{}</album>\n",
+            escape_xml(&entry.topic)
+        ));
         // Select video URL based on quality parameter
         let video_url = match quality {
             "l" | "low" => entry.url_video_low.as_ref().unwrap_or(&entry.url_video),
             "h" | "hd" | "high" => entry.url_video_hd.as_ref().unwrap_or(&entry.url_video),
             _ => &entry.url_video, // default to medium quality
         };
-        content.push_str(&format!("      <location>{}</location>\n", escape_xml(video_url)));
+        content.push_str(&format!(
+            "      <location>{}</location>\n",
+            escape_xml(video_url)
+        ));
         if duration_ms > 0 {
             content.push_str(&format!("      <duration>{}</duration>\n", duration_ms));
         }
         if let Some(description) = &entry.description {
             if !description.is_empty() {
-                content.push_str(&format!("      <annotation>{}</annotation>\n", escape_xml(description)));
+                content.push_str(&format!(
+                    "      <annotation>{}</annotation>\n",
+                    escape_xml(description)
+                ));
             }
         }
         content.push_str("    </track>\n");
     }
-    
+
     content.push_str("  </trackList>\n");
     content.push_str("</playlist>\n");
-    
+
     Ok(content)
 }
 
@@ -593,7 +679,10 @@ fn escape_xml(text: &str) -> String {
         .replace('\'', "&apos;")
 }
 
-fn save_xspf_playlist(results: &[mediathekviewweb::models::Item], query_terms: &[String]) -> Result<()> {
+fn save_xspf_playlist(
+    results: &[mediathekviewweb::models::Item],
+    query_terms: &[String],
+) -> Result<()> {
     if results.is_empty() {
         println!("{}", "No results found to save to playlist.".yellow());
         return Ok(());
@@ -601,17 +690,23 @@ fn save_xspf_playlist(results: &[mediathekviewweb::models::Item], query_terms: &
 
     // Create playlist filename from query (similar to VLC playlist naming)
     let playlist_name = generate_xspf_filename(&query_terms.join(" "));
-    
-    // Generate XSPF content  
+
+    // Generate XSPF content
     let xspf_content = generate_xspf_content(results, &query_terms.join(" "), "m")?;
-    
+
     // Write to file
     let mut file = File::create(&playlist_name)?;
     writeln!(file, "{}", xspf_content)?;
-    
-    println!("{}", format!("Created XSPF playlist: {}", playlist_name).green());
-    println!("{}", format!("Added {} track(s) to playlist", results.len()).green());
-    
+
+    println!(
+        "{}",
+        format!("Created XSPF playlist: {}", playlist_name).green()
+    );
+    println!(
+        "{}",
+        format!("Added {} track(s) to playlist", results.len()).green()
+    );
+
     Ok(())
 }
 
@@ -625,9 +720,9 @@ fn generate_xspf_filename(query: &str) -> String {
         .take(3) // Take first 3 words
         .collect::<Vec<_>>()
         .join("_");
-    
+
     let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
-    
+
     if sanitized_query.is_empty() {
         format!("mwb_playlist_{}.xspf", timestamp)
     } else {

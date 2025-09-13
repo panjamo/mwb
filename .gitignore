@@ -1,6 +1,7 @@
 /target
 *.csv
 *.json
+*.xspf
 examples.bat.bak
 .env
 .vscode/
