@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-REPO="your-username/mwb"  # Replace with actual repository
+REPO="panjamo/mwb"
 BINARY_NAME="mwb"
 INSTALL_DIR="/usr/local/bin"
 TEMP_DIR="/tmp/mwb-install"
@@ -334,7 +334,7 @@ case "${1:-}" in
         echo
         echo "Environment variables:"
         echo "  INSTALL_DIR    Installation directory (default: /usr/local/bin)"
-        echo "  REPO           GitHub repository (default: your-username/mwb)"
+        echo "  REPO           GitHub repository (default: panjamo/mwb)"
         echo
         exit 0
         ;;

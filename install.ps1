@@ -4,7 +4,7 @@
 [CmdletBinding()]
 param(
     [string]$InstallDir = "$env:LOCALAPPDATA\Programs\mwb",
-    [string]$Repository = "your-username/mwb",  # Replace with actual repository
+    [string]$Repository = "panjamo/mwb",
     [switch]$AddToPath,
     [switch]$Force,
     [switch]$Help,
@@ -46,7 +46,7 @@ Usage: .\install.ps1 [options]
 
 Options:
   -InstallDir <path>    Installation directory (default: $env:LOCALAPPDATA\Programs\mwb)
-  -Repository <repo>    GitHub repository (default: your-username/mwb)
+  -Repository <repo>    GitHub repository (default: panjamo/mwb)
   -AddToPath           Add installation directory to PATH
   -Force               Force reinstallation even if already installed
   -Help                Show this help message
