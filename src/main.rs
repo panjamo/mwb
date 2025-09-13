@@ -1,7 +1,7 @@
 use anyhow::Result;
 use chrono::DateTime;
 use clap::{Parser, Subcommand};
-use colored::*;
+use colored::Colorize;
 use mediathekviewweb::{
     models::{SortField, SortOrder},
     Mediathek,
@@ -10,6 +10,7 @@ use regex::Regex;
 
 use std::fs::File;
 use std::io::Write;
+
 use std::process::Command;
 
 #[derive(Parser)]
@@ -40,7 +41,7 @@ struct SearchParams {
 enum Commands {
     /// Search for content
     Search {
-        /// Search query (supports MediathekView syntax: !channel #topic +title *description >duration <duration)
+        /// Search query (supports `MediathekView` syntax: !channel #topic +title *description >duration <duration)
         /// Duration examples: ">90" (longer than 90min), "<30" (shorter than 30min), ">60 <120" (between 60-120min)
         #[arg(required = true)]
         query: Vec<String>,
@@ -173,10 +174,9 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
 
     // Apply sorting
     let sort_field = match params.sort_by.as_str() {
-        "timestamp" => SortField::Timestamp,
         "duration" => SortField::Duration,
         "channel" => SortField::Channel,
-        _ => SortField::Timestamp,
+        _ => SortField::Timestamp, // includes "timestamp" and default
     };
 
     let sort_direction = match params.sort_order.as_str() {
@@ -203,7 +203,7 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
             "h" | "hd" | "high" => "h",
             "m" | "medium" | "" => "m",
             _ => {
-                println!("{}", format!("Warning: Invalid quality '{}'. Using medium quality (m). Valid options: l (low), m (medium), h (HD)", quality).yellow());
+                println!("{}", format!("Warning: Invalid quality '{quality}'. Using medium quality (m). Valid options: l (low), m (medium), h (HD)").yellow());
                 "m"
             }
         };
@@ -214,17 +214,17 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
                 println!("{}", serde_json::to_string_pretty(&filtered_results)?);
             }
             "csv" => {
-                print_csv(&filtered_results)?;
+                print_csv(&filtered_results);
             }
             "xspf" => {
                 if params.xspf_file {
                     save_xspf_playlist(&filtered_results, &params.query_terms)?;
                 } else {
-                    print_xspf(&filtered_results, &params.query_terms.join(" "))?;
+                    print_xspf(&filtered_results, &params.query_terms.join(" "));
                 }
             }
             _ => {
-                print_table(&filtered_results, &result.query_info)?;
+                print_table(&filtered_results, &result.query_info);
             }
         }
     }
@@ -272,7 +272,7 @@ fn apply_regex_filters(
         if !exclude_terms.is_empty() {
             let exclude_regexes: Result<Vec<Regex>, _> = exclude_terms
                 .iter()
-                .map(|pattern| Regex::new(&format!("(?i){}", pattern)))
+                .map(|pattern| Regex::new(&format!("(?i){pattern}")))
                 .collect();
 
             let exclude_regexes =
@@ -301,7 +301,7 @@ fn apply_regex_filters(
         if !include_terms.is_empty() {
             let include_regexes: Result<Vec<Regex>, _> = include_terms
                 .iter()
-                .map(|pattern| Regex::new(&format!("(?i){}", pattern)))
+                .map(|pattern| Regex::new(&format!("(?i){pattern}")))
                 .collect();
 
             let include_regexes =
@@ -378,15 +378,15 @@ fn create_vlc_playlist_and_launch(
     let playlist_name = generate_vlc_playlist_filename(&query_terms.join(" "));
 
     // Generate XSPF content
-    let xspf_content = generate_xspf_content(results, &query_terms.join(" "), quality)?;
+    let xspf_content = generate_xspf_content(results, &query_terms.join(" "), quality);
 
     // Write to file
     let mut file = File::create(&playlist_name)?;
-    writeln!(file, "{}", xspf_content)?;
+    writeln!(file, "{xspf_content}")?;
 
     println!(
         "{}",
-        format!("Created XSPF playlist: {}", playlist_name).green()
+        format!("Created XSPF playlist: {playlist_name}").green()
     );
     println!(
         "{}",
@@ -421,10 +421,10 @@ fn create_vlc_playlist_and_launch(
             println!("{}", "VLC launched successfully!".green());
         }
         Err(e) => {
-            println!("{}", format!("Failed to launch VLC: {}", e).red());
+            println!("{}", format!("Failed to launch VLC: {e}").red());
             println!(
                 "{}",
-                format!("Playlist saved as: {}", playlist_name).yellow()
+                format!("Playlist saved as: {playlist_name}").yellow()
             );
             println!("{}", "You can manually open this file with VLC.".yellow());
         }
@@ -439,9 +439,8 @@ fn generate_vlc_playlist_filename(query: &str) -> String {
         .chars()
         .map(|c| match c {
             'a'..='z' | 'A'..='Z' | '0'..='9' => c,
-            ' ' => '_',
             '>' | '<' => 'm', // Convert > to "more", < to "less" indicator
-            _ => '_',
+            _ => '_', // includes spaces and all other characters
         })
         .collect::<String>()
         .trim_matches('_')
@@ -450,7 +449,8 @@ fn generate_vlc_playlist_filename(query: &str) -> String {
     // Limit filename length and add timestamp suffix for uniqueness
     let max_len = 50;
     let truncated = if sanitized.len() > max_len {
-        format!("{}...", &sanitized[..max_len])
+        let partial = &sanitized[..max_len];
+        format!("{partial}...")
     } else {
         sanitized
     };
@@ -462,34 +462,36 @@ fn generate_vlc_playlist_filename(query: &str) -> String {
         .as_secs()
         % 10000; // Last 4 digits
 
-    format!("mwb_{}_{}.xspf", truncated, timestamp)
+    format!("mwb_{truncated}_{timestamp}.xspf")
 }
 
 fn print_table(
     results: &[mediathekviewweb::models::Item],
     query_info: &mediathekviewweb::models::QueryInfo,
-) -> Result<()> {
+) {
     println!("{}", "Search Results".bold().blue());
     println!(
         "Total results: {}",
         query_info.total_results.to_string().green()
     );
     println!("Showing: {}", query_info.result_count.to_string().green());
+    let search_time = query_info.search_engine_time.as_millis();
     println!(
         "Search time: {}ms",
-        format!("{:.2}", query_info.search_engine_time.as_millis()).yellow()
+        format!("{search_time:.2}").yellow()
     );
     println!();
 
     if results.is_empty() {
         println!("{}", "No results found.".yellow());
-        return Ok(());
+        return;
     }
 
     for (i, entry) in results.iter().enumerate() {
+        let entry_num = i + 1;
         println!(
             "{} {}",
-            format!("{}.", i + 1).blue().bold(),
+            format!("{entry_num}.").blue().bold(),
             "─".repeat(60).blue()
         );
 
@@ -528,7 +530,7 @@ fn print_table(
             if !description.is_empty() && description.len() > 10 {
                 let desc = if description.chars().count() > 200 {
                     let truncated: String = description.chars().take(200).collect();
-                    format!("{}...", truncated)
+                    format!("{truncated}...")
                 } else {
                     description.clone()
                 };
@@ -539,10 +541,9 @@ fn print_table(
         println!();
     }
 
-    Ok(())
 }
 
-fn print_csv(results: &[mediathekviewweb::models::Item]) -> Result<()> {
+fn print_csv(results: &[mediathekviewweb::models::Item]) {
     println!("Channel,Theme,Title,Duration,Date,URL,Description");
 
     for entry in results {
@@ -568,14 +569,11 @@ fn print_csv(results: &[mediathekviewweb::models::Item]) -> Result<()> {
                 .replace('"', "\"\"")
         );
     }
-
-    Ok(())
 }
 
-fn print_xspf(results: &[mediathekviewweb::models::Item], query: &str) -> Result<()> {
-    let xspf_content = generate_xspf_content(results, query, "m")?;
-    println!("{}", xspf_content);
-    Ok(())
+fn print_xspf(results: &[mediathekviewweb::models::Item], query: &str) {
+    let xspf_content = generate_xspf_content(results, query, "m");
+    println!("{xspf_content}");
 }
 
 /// Generates complete XSPF playlist content as a string
@@ -584,7 +582,7 @@ fn print_xspf(results: &[mediathekviewweb::models::Item], query: &str) -> Result
 /// with rich metadata including duration, broadcast dates, and descriptions.
 ///
 /// # Arguments
-/// * `results` - Array of MediathekView items to include in playlist
+/// * `results` - Array of `MediathekView` items to include in playlist
 /// * `query` - Search query string used for playlist title
 ///
 /// # Returns
@@ -593,73 +591,69 @@ fn generate_xspf_content(
     results: &[mediathekviewweb::models::Item],
     query: &str,
     quality: &str,
-) -> Result<String> {
+) -> String {
     // Pre-allocate capacity to reduce reallocations (header + ~512 chars per track)
     let mut content = String::with_capacity(1024 + results.len() * 512);
 
     content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     content.push_str("<playlist version=\"1\" xmlns=\"http://xspf.org/ns/0/\">\n");
-    content.push_str(&format!(
-        "  <title>MediathekView Search: {}</title>\n",
-        escape_xml(query)
-    ));
+    content.push_str("  <title>MediathekView Search: ");
+    content.push_str(&escape_xml(query));
+    content.push_str("</title>\n");
     content.push_str("  <creator>MWB - MediathekViewWeb CLI</creator>\n");
-    content.push_str(&format!(
-        "  <date>{}</date>\n",
-        chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
-    ));
+    content.push_str("  <date>");
+    content.push_str(&chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string());
+    content.push_str("</date>\n");
     content.push_str("  <trackList>\n");
 
     // Generate track entries with metadata
     for entry in results {
-        let duration_ms = entry.duration.map_or(0, |d| d.as_millis() as u64);
+        let duration_ms = entry.duration.map_or(0, |d| {
+            u64::try_from(d.as_millis()).unwrap_or(u64::MAX)
+        });
         let date_readable = DateTime::from_timestamp(entry.timestamp, 0)
             .map(|dt| dt.format("%Y-%m-%d").to_string())
             .unwrap_or_default();
 
         content.push_str("    <track>\n");
         // Include date in title for VLC visibility
-        let title_with_date = if !date_readable.is_empty() {
-            format!("{} ({})", entry.title, date_readable)
-        } else {
+        let title_with_date = if date_readable.is_empty() {
             entry.title.clone()
+        } else {
+            format!("{} ({date_readable})", entry.title)
         };
-        content.push_str(&format!(
-            "      <title>{}</title>\n",
-            escape_xml(&title_with_date)
-        ));
+        content.push_str("      <title>");
+        content.push_str(&escape_xml(&title_with_date));
+        content.push_str("</title>\n");
         // Use creator for channel, artist for date (VLC displays artist column)
-        content.push_str(&format!(
-            "      <creator>{}</creator>\n",
-            escape_xml(&entry.channel)
-        ));
-        content.push_str(&format!(
-            "      <artist>{}</artist>\n",
-            escape_xml(&date_readable)
-        ));
-        content.push_str(&format!(
-            "      <album>{}</album>\n",
-            escape_xml(&entry.topic)
-        ));
+        content.push_str("      <creator>");
+        content.push_str(&escape_xml(&entry.channel));
+        content.push_str("</creator>\n");
+        content.push_str("      <artist>");
+        content.push_str(&escape_xml(&date_readable));
+        content.push_str("</artist>\n");
+        content.push_str("      <album>");
+        content.push_str(&escape_xml(&entry.topic));
+        content.push_str("</album>\n");
         // Select video URL based on quality parameter
         let video_url = match quality {
             "l" | "low" => entry.url_video_low.as_ref().unwrap_or(&entry.url_video),
             "h" | "hd" | "high" => entry.url_video_hd.as_ref().unwrap_or(&entry.url_video),
             _ => &entry.url_video, // default to medium quality
         };
-        content.push_str(&format!(
-            "      <location>{}</location>\n",
-            escape_xml(video_url)
-        ));
+        content.push_str("      <location>");
+        content.push_str(&escape_xml(video_url));
+        content.push_str("</location>\n");
         if duration_ms > 0 {
-            content.push_str(&format!("      <duration>{}</duration>\n", duration_ms));
+            content.push_str("      <duration>");
+            content.push_str(&duration_ms.to_string());
+            content.push_str("</duration>\n");
         }
         if let Some(description) = &entry.description {
             if !description.is_empty() {
-                content.push_str(&format!(
-                    "      <annotation>{}</annotation>\n",
-                    escape_xml(description)
-                ));
+                content.push_str("      <annotation>");
+                content.push_str(&escape_xml(description));
+                content.push_str("</annotation>\n");
             }
         }
         content.push_str("    </track>\n");
@@ -668,7 +662,7 @@ fn generate_xspf_content(
     content.push_str("  </trackList>\n");
     content.push_str("</playlist>\n");
 
-    Ok(content)
+    content
 }
 
 fn escape_xml(text: &str) -> String {
@@ -692,15 +686,15 @@ fn save_xspf_playlist(
     let playlist_name = generate_xspf_filename(&query_terms.join(" "));
 
     // Generate XSPF content
-    let xspf_content = generate_xspf_content(results, &query_terms.join(" "), "m")?;
+    let xspf_content = generate_xspf_content(results, &query_terms.join(" "), "m");
 
     // Write to file
     let mut file = File::create(&playlist_name)?;
-    writeln!(file, "{}", xspf_content)?;
+    writeln!(file, "{xspf_content}")?;
 
     println!(
         "{}",
-        format!("Created XSPF playlist: {}", playlist_name).green()
+        format!("Created XSPF playlist: {playlist_name}").green()
     );
     println!(
         "{}",
@@ -724,8 +718,8 @@ fn generate_xspf_filename(query: &str) -> String {
     let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
 
     if sanitized_query.is_empty() {
-        format!("mwb_playlist_{}.xspf", timestamp)
+        format!("mwb_playlist_{timestamp}.xspf")
     } else {
-        format!("mwb_{}_{}.xspf", sanitized_query, timestamp)
+        format!("mwb_{sanitized_query}_{timestamp}.xspf")
     }
 }
