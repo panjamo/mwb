@@ -54,8 +54,7 @@ jobs:
     - name: Run tests
       run: cargo test --verbose --all-features
 
-    - name: Run doctests
-      run: cargo test --doc
+
 
     - name: Check documentation
       run: cargo doc --no-deps --document-private-items --all-features

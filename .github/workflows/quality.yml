@@ -137,8 +137,7 @@ jobs:
       run: |
         RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features
 
-    - name: Test documentation examples
-      run: cargo test --doc --all-features
+
 
     - name: Check README examples
       run: |
