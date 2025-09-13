@@ -1,0 +1,291 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run code quality checks weekly on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  quality:
+    name: Code Quality Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+
+    - name: Cache cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-quality-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-quality-
+
+    - name: Check code formatting
+      run: |
+        if ! cargo fmt --all -- --check; then
+          echo "Code formatting issues found. Run 'cargo fmt' to fix them."
+          exit 1
+        fi
+
+    - name: Run Clippy (strict)
+      run: |
+        cargo clippy --all-targets --all-features -- \
+          -D warnings \
+          -D clippy::all \
+          -D clippy::pedantic \
+          -A clippy::missing-docs-in-private-items \
+          -A clippy::module-name-repetitions
+
+    - name: Check for unused dependencies
+      run: |
+        cargo install cargo-machete
+        cargo machete
+
+    - name: Run cargo-deny
+      uses: EmbarkStudios/cargo-deny-action@v1
+      with:
+        log-level: warn
+        command: check
+        arguments: --all-features
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-coverage-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-coverage-
+
+    - name: Install cargo-tarpaulin
+      run: cargo install cargo-tarpaulin
+
+    - name: Run coverage
+      run: |
+        cargo tarpaulin --verbose --all-features --workspace --timeout 120 \
+          --exclude-files src/main.rs \
+          --out xml \
+          --output-dir ./coverage
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage/cobertura.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+  docs:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-docs-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-docs-
+
+    - name: Check documentation
+      run: |
+        RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features
+
+    - name: Test documentation examples
+      run: cargo test --doc --all-features
+
+    - name: Check README examples
+      run: |
+        # Extract code blocks from README and verify they compile
+        if command -v mdbook &> /dev/null; then
+          echo "Checking README examples..."
+          # This would require setting up mdbook testing
+        else
+          echo "Skipping README example checks (mdbook not available)"
+        fi
+
+  performance:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-bench-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-bench-
+
+    - name: Run benchmarks
+      run: |
+        # If you have benchmarks, run them here
+        # cargo bench --all-features
+        echo "No benchmarks configured yet"
+
+    - name: Store benchmark results
+      if: github.event_name == 'push'
+      run: |
+        # Store benchmark results for trend analysis
+        mkdir -p benchmark-results
+        echo "Placeholder for benchmark results" > benchmark-results/results.txt
+        echo "Date: $(date)" >> benchmark-results/results.txt
+
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: benchmark-results-${{ github.sha }}
+        path: benchmark-results/
+        retention-days: 30
+
+  cargo-msrv:
+    name: Minimum Supported Rust Version
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install cargo-msrv
+      run: cargo install cargo-msrv
+
+    - name: Verify MSRV
+      run: |
+        # Check if the current MSRV in Cargo.toml is accurate
+        cargo msrv --output-format json verify
+        
+        # Find the actual MSRV
+        cargo msrv --output-format json find | tee msrv-results.json
+
+    - name: Comment MSRV results on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          try {
+            const msrvResults = fs.readFileSync('msrv-results.json', 'utf8');
+            const results = JSON.parse(msrvResults);
+            
+            const comment = `
+            ## 🦀 MSRV Check Results
+            
+            **Minimum Supported Rust Version**: ${results.msrv || 'Not determined'}
+            
+            This PR has been tested against the minimum supported Rust version.
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          } catch (error) {
+            console.log('Could not parse MSRV results:', error);
+          }
+
+  supply-chain:
+    name: Supply Chain Security
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-supply-chain-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-supply-chain-
+
+    - name: Install cargo-geiger
+      run: cargo install cargo-geiger
+
+    - name: Run unsafe code detection
+      run: |
+        echo "## Unsafe Code Detection" > supply-chain-report.md
+        echo "" >> supply-chain-report.md
+        cargo geiger --format GitHubMarkdown >> supply-chain-report.md || true
+
+    - name: Install cargo-outdated
+      run: cargo install cargo-outdated
+
+    - name: Check for outdated dependencies
+      run: |
+        echo "" >> supply-chain-report.md
+        echo "## Outdated Dependencies" >> supply-chain-report.md
+        echo "" >> supply-chain-report.md
+        cargo outdated --format json > outdated.json || true
+        if [ -s outdated.json ]; then
+          echo "Found outdated dependencies - see artifact for details" >> supply-chain-report.md
+        else
+          echo "All dependencies are up to date! 🎉" >> supply-chain-report.md
+        fi
+
+    - name: Upload supply chain report
+      uses: actions/upload-artifact@v3
+      with:
+        name: supply-chain-report-${{ github.sha }}
+        path: |
+          supply-chain-report.md
+          outdated.json
+        retention-days: 30

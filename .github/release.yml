@@ -1,0 +1,203 @@
+# GitHub Release Configuration
+# This file configures automated changelog generation and release notes
+
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+      - dependencies
+      - duplicate
+      - question
+      - invalid
+      - wontfix
+    authors:
+      - dependabot
+      - dependabot[bot]
+      - github-actions[bot]
+
+  categories:
+    - title: 🚀 New Features
+      labels:
+        - feature
+        - enhancement
+        - feat
+      
+    - title: 🐛 Bug Fixes
+      labels:
+        - bug
+        - fix
+        - bugfix
+        - hotfix
+        
+    - title: 📚 Documentation
+      labels:
+        - documentation
+        - docs
+        
+    - title: 🔧 Improvements & Refactoring
+      labels:
+        - refactor
+        - improvement
+        - performance
+        - optimization
+        - style
+        
+    - title: 🔒 Security
+      labels:
+        - security
+        - vulnerability
+        
+    - title: 🧪 Testing
+      labels:
+        - test
+        - testing
+        - tests
+        
+    - title: 🛠️ Build & CI/CD
+      labels:
+        - build
+        - ci
+        - cd
+        - github-actions
+        - workflow
+        
+    - title: 📦 Dependencies
+      labels:
+        - dependencies
+        - deps
+        - cargo
+        
+    - title: 🔄 Other Changes
+      labels:
+        - chore
+        - maintenance
+        - cleanup
+
+# Version management settings
+version:
+  # Semantic versioning patterns
+  patterns:
+    major:
+      - "BREAKING CHANGE"
+      - "breaking"
+      - "major"
+    minor:
+      - "feat:"
+      - "feature:"
+      - "add:"
+      - "new:"
+    patch:
+      - "fix:"
+      - "bug:"
+      - "patch:"
+      - "hotfix:"
+      
+  # Pre-release patterns
+  prerelease:
+    alpha:
+      - "alpha"
+      - "experimental"
+    beta:
+      - "beta"
+      - "rc"
+    dev:
+      - "dev"
+      - "snapshot"
+
+# Release notes template
+template: |
+  ## What's Changed in {{ version }}
+  
+  {{ changelog }}
+  
+  ## VLC Quality Feature 🎬
+  
+  This release includes enhanced VLC integration with video quality selection:
+  - `-v=l` or `--vlc=low` for low quality videos (faster streaming, smaller files)
+  - `-v=m` or `--vlc=medium` for medium quality videos (default)  
+  - `-v=h` or `--vlc=hd` for HD quality videos (when available)
+  - `-v` without parameter defaults to medium quality
+  
+  ## Installation
+  
+  ### Quick Install
+  ```bash
+  # Linux/macOS
+  curl -sSL https://github.com/{{ repo }}/releases/latest/download/install.sh | bash
+  
+  # Windows (PowerShell)
+  iwr -useb https://github.com/{{ repo }}/releases/latest/download/install.ps1 | iex
+  ```
+  
+  ### Manual Download
+  - **Windows**: Download `mwb-windows-x64.exe`
+  - **Linux**: Download `mwb-linux-x64` or `mwb-linux-musl-x64`  
+  - **macOS Intel**: Download `mwb-macos-x64`
+  - **macOS Apple Silicon**: Download `mwb-macos-arm64`
+  
+  ## Usage Examples
+  
+  ```bash
+  # Basic search with VLC playlist
+  mwb search "documentary" --vlc
+  
+  # High quality VLC playlist
+  mwb search "tatort" --vlc=h --size 10
+  
+  # Low quality for mobile/slow connections
+  mwb search "news" -v=l -s 5
+  
+  # Export to different formats
+  mwb search "arte" --format json > results.json
+  mwb search "zdf" --format csv > results.csv
+  ```
+  
+  ## Full Changelog
+  
+  **Full Changelog**: https://github.com/{{ repo }}/compare/{{ previous_version }}...{{ version }}
+  
+  ---
+  
+  *Verify your download with the provided checksums and visit our [documentation](https://github.com/{{ repo }}#readme) for more information.*
+
+# Auto-release settings
+auto:
+  # Automatically create releases for version tags
+  enabled: true
+  
+  # Draft releases for manual review
+  draft: false
+  
+  # Mark as pre-release based on version pattern
+  prerelease:
+    pattern: ".*-(alpha|beta|rc|dev).*"
+    
+  # Generate release notes automatically
+  generate_release_notes: true
+  
+  # Include checksums in release assets
+  checksums: true
+  
+  # Asset patterns to include
+  assets:
+    - "mwb-*"
+    - "*.sha256"
+    - "CHANGELOG.md"
+    - "README.md"
+
+# Notification settings
+notifications:
+  # Slack webhook for release notifications
+  slack:
+    enabled: false
+    webhook_url: "" # Set via SLACK_WEBHOOK_URL secret
+    
+  # Discord webhook for release notifications  
+  discord:
+    enabled: false
+    webhook_url: "" # Set via DISCORD_WEBHOOK_URL secret
+    
+  # Email notifications
+  email:
+    enabled: false
+    recipients: [] # Set via EMAIL_RECIPIENTS secret

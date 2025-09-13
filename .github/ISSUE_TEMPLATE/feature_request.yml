@@ -1,0 +1,154 @@
+name: 🚀 Feature Request
+description: Suggest a new feature or enhancement
+title: "[Feature] "
+labels: ["enhancement", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature! Please provide as much detail as possible to help us understand your request.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checklist
+      description: Please verify these steps before submitting your feature request
+      options:
+        - label: I have searched existing issues and this feature hasn't been requested before
+          required: true
+        - label: I have checked the documentation to ensure this feature doesn't already exist
+          required: true
+        - label: This feature would benefit other users, not just myself
+          required: false
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: |
+        What problem does this feature solve? What use case does it address?
+        Please be specific about the pain point you're experiencing.
+      placeholder: |
+        I'm trying to... but currently there's no way to...
+        This would help me because...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: |
+        Describe the solution you'd like to see. Be as detailed as possible.
+        Include any specific behavior, options, or interface you have in mind.
+      placeholder: |
+        I would like to see a new option/command that...
+        It should work like this...
+        The interface could be...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: |
+        What alternatives have you considered? Why wouldn't they work?
+        Have you found any workarounds?
+      placeholder: |
+        I considered using... but it doesn't work because...
+        Current workaround: ...
+        Other tools do this by...
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority/Impact
+      description: How important is this feature to you and your workflow?
+      options:
+        - Low - Nice to have
+        - Medium - Would improve my workflow
+        - High - Significant impact on productivity
+        - Critical - Blocking important use cases
+    validations:
+      required: true
+
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: Estimated complexity
+      description: How complex do you think this feature would be to implement?
+      options:
+        - Simple - Minor change or addition
+        - Medium - Moderate development effort
+        - Complex - Significant development effort
+        - Unknown - I'm not sure
+    validations:
+      required: false
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Usage examples
+      description: |
+        Provide concrete examples of how this feature would be used.
+        Include command examples, expected output, etc.
+      render: shell
+      placeholder: |
+        # Example 1: Basic usage
+        $ mwb search "documentary" --new-feature
+        Expected output: ...
+
+        # Example 2: Advanced usage
+        $ mwb search "news" --new-feature --some-option
+        Expected output: ...
+
+  - type: textarea
+    id: mockup
+    attributes:
+      label: Interface mockup or design
+      description: |
+        If applicable, provide mockups, screenshots, or detailed descriptions
+        of how the user interface should look or behave.
+      placeholder: |
+        Command line interface:
+        - New flag: --feature-name
+        - New subcommand: mwb feature-name
+        - Output format: ...
+
+  - type: checkboxes
+    id: implementation
+    attributes:
+      label: Implementation considerations
+      description: Check all that apply
+      options:
+        - label: This feature should be backward compatible
+        - label: This feature may require breaking changes
+        - label: This feature requires new dependencies
+        - label: This feature affects the CLI interface
+        - label: This feature affects output formats
+        - label: This feature affects VLC integration
+        - label: This feature affects search functionality
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: |
+        Add any other context, screenshots, links, or examples that might be helpful.
+        Are there similar features in other tools that work well?
+      placeholder: |
+        Similar tools like X do this by...
+        Here's a link to relevant documentation...
+        This feature is common in...
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I would be willing to help implement this feature
+        - label: I would be willing to test this feature
+        - label: I would be willing to write documentation for this feature

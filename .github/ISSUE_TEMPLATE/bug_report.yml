@@ -1,0 +1,131 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior
+title: "[Bug] "
+labels: ["bug", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the information below to help us investigate and fix the issue.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight checklist
+      description: Please verify these steps before submitting your bug report
+      options:
+        - label: I have searched existing issues and this is not a duplicate
+          required: true
+        - label: I have tested with the latest version
+          required: true
+        - label: I have read the documentation and troubleshooting guide
+          required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: What version of mwb are you running?
+      placeholder: "v1.0.0 (run 'mwb --version' to check)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: What operating system are you using?
+      options:
+        - Windows 10/11
+        - macOS (Intel)
+        - macOS (Apple Silicon)
+        - Ubuntu/Debian
+        - CentOS/RHEL/Fedora
+        - Arch Linux
+        - Alpine Linux
+        - Other Linux
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: command
+    attributes:
+      label: Command that caused the issue
+      description: What command were you running when the bug occurred?
+      placeholder: "mwb search 'documentary' --vlc=h"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+      placeholder: "I expected the command to create an HD quality VLC playlist..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened? Include any error messages.
+      placeholder: "Instead, I got the error message: ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Run command `mwb search ...`
+        2. Observe that ...
+        3. Error occurs when ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log output
+      description: |
+        Please include any relevant log output or error messages.
+        You can run with `RUST_LOG=debug mwb ...` for more detailed output.
+      render: shell
+      placeholder: |
+        $ mwb search "test" --vlc=h
+        Error: ...
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Additional environment information
+      description: |
+        Any additional information about your environment that might be relevant
+        (VLC version, network setup, etc.)
+      placeholder: |
+        - VLC version: 3.0.18
+        - Network: Corporate proxy
+        - Other: ...
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround
+      description: Have you found any workarounds for this issue?
+      placeholder: "Using --vlc=m instead of --vlc=h works fine"
+
+  - type: checkboxes
+    id: additional
+    attributes:
+      label: Additional information
+      options:
+        - label: This is a security-related issue
+        - label: This issue causes data loss
+        - label: This is a regression (worked in a previous version)
+        - label: I'm willing to help test a fix
