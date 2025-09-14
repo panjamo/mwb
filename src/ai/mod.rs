@@ -104,8 +104,6 @@ struct Candidate {
 
 #[derive(Debug, Deserialize)]
 struct ResponseContent {
-    #[allow(dead_code)]
-    role: String,
     parts: Vec<ResponsePart>,
 }
 
@@ -217,7 +215,7 @@ Use the episode data provided in the input to create the playlist entries. Extra
         }];
 
         // Main conversation loop with tool calling
-        let max_iterations = 10;
+        let max_iterations = 6; // Reduced to prevent quota issues
         for iteration in 1..=max_iterations {
             println!("🔄 Iteration {} - Sending request to Gemini...", iteration);
 
@@ -226,7 +224,7 @@ Use the episode data provided in the input to create the playlist entries. Extra
                 tools: tools.clone(),
                 generation_config: GenerationConfig {
                     temperature: 0.1,
-                    max_output_tokens: 8192,
+                    max_output_tokens: 4096, // Reduced to save tokens
                 },
             };
 
@@ -384,20 +382,43 @@ Use the episode data provided in the input to create the playlist entries. Extra
 
     /// Format episodes for AI processing
     fn format_episodes_for_ai(&self, results: &[mediathekviewweb::models::Item]) -> Result<String> {
-        let formatted: Vec<Value> = results
+        // Limit episodes to prevent token overflow
+        let limited_results = if results.len() > 20 {
+            &results[..20]
+        } else {
+            results
+        };
+
+        let formatted: Vec<Value> = limited_results
             .iter()
             .map(|item| {
                 json!({
                     "title": item.title,
                     "topic": item.topic,
-                    "description": item.description,
+                    "description": if let Some(desc) = &item.description {
+                        if desc.len() > 200 {
+                            // Find a safe character boundary within 200 chars
+                            let mut end = 200;
+                            while end > 0 && !desc.is_char_boundary(end) {
+                                end -= 1;
+                            }
+                            format!("{}...", &desc[..end])
+                        } else {
+                            desc.clone()
+                        }
+                    } else {
+                        String::new()
+                    },
                     "duration": item.duration,
-                    "timestamp": item.timestamp,
                     "channel": item.channel,
                     "url": item.url_video,
                 })
             })
             .collect();
+
+        if results.len() > 20 {
+            println!("ℹ️  Processing first 20 episodes to avoid API limits. Use smaller -s parameter for full dataset.");
+        }
 
         serde_json::to_string_pretty(&formatted)
             .map_err(|e| anyhow::anyhow!("Failed to serialize episodes: {}", e))
