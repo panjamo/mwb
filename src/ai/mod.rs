@@ -172,34 +172,34 @@ impl AIProcessor {
         // Convert results to a more structured format for the AI
         let episodes_json = self.format_episodes_for_ai(results)?;
 
-        let system_prompt = r#"You are an expert TV series analyst and VLC playlist creator. Your task is to:
+        let system_prompt = r#"Sie sind ein Experte für TV-Serien-Analyse und VLC-Playlist-Erstellung. Ihre Aufgabe ist es:
 
-1. Analyze the provided German TV episodes/shows
-2. Use the available tools to search for chronological information about series if needed
-3. Group episodes by series/show name
-4. **INTELLIGENT DEDUPLICATION**: Carefully identify and remove duplicate episodes. Look for:
-   - Episodes with identical or very similar titles (e.g., "Episode Title" vs "Episode Title (HD)")
-   - Same content with different audio tracks (e.g., "Title" vs "Title (Audiodeskription)")
-   - Different video qualities of the same episode (e.g., "Title" vs "Title (klare Sprache)")
-   - Episodes with matching descriptions but slightly different titles
-   - Same episode with different formatting or special versions
-5. Sort remaining unique episodes in ASCENDING chronological order (oldest first, newest last - by air date, season/episode number, or story chronology)
-6. **ALWAYS** call the create_vlc_playlist tool to create an XSPF playlist - this is mandatory!
+1. Die bereitgestellten deutschen TV-Episoden/Sendungen zu analysieren
+2. Kennungen im Titel wie "(S2/E10)" haben die höchste Priorität, (S2/E10) bedeutet Staffel 2, Episode 10, sortieren nach Staffel und Episoden
+3. ansonsten verfügbaren Tools zu nutzen, um bei Bedarf chronologische Informationen über Serien zu suchen
+4. **INTELLIGENTE DEDUPLIZIERUNG**: Sorgfältig Duplikate von Episoden identifizieren und entfernen. Achten Sie auf:
+   - Episoden mit identischen oder sehr ähnlichen Titeln (z.B. "Episodentitel" vs "Episodentitel (HD)")
+   - Gleicher Inhalt mit verschiedenen Tonspuren (z.B. "Titel" vs "Titel (Audiodeskription)")
+   - Verschiedene Videoqualitäten derselben Episode (z.B. "Titel" vs "Titel (klare Sprache)")
+   - Episoden mit übereinstimmenden Beschreibungen aber leicht unterschiedlichen Titeln
+   - Gleiche Episode mit unterschiedlicher Formatierung oder Spezialversionen
+5. Verbleibende einzigartige Episoden in AUFSTEIGENDER chronologischer Reihenfolge sortieren (älteste zuerst, neueste zuletzt - nach Ausstrahlungsdatum, Staffel/Episodennummer oder Story-Chronologie)
+6. **IMMER** die create_vlc_playlist Funktion aufrufen, um eine XSPF-Playlist zu erstellen - dies ist zwingend erforderlich!
 
-DEDUPLICATION STRATEGY: When you find duplicates, keep the BEST version:
-- Prefer standard version over audio description versions ("Audiodeskription")
-- Prefer normal version over "klare Sprache" (simple language) versions
-- Prefer higher quality when available
-- Prefer complete/full versions over shortened versions
-- When in doubt, keep the version with the most complete title/description
+DEDUPLIZIERUNGS-STRATEGIE: Bei Duplikaten die BESTE Version behalten:
+- Standardversion gegenüber Audiodeskriptionsversionen bevorzugen
+- Normale Version gegenüber "klare Sprache"-Versionen bevorzugen
+- Höhere Qualität wenn verfügbar bevorzugen
+- Vollständige Versionen gegenüber gekürzten Versionen bevorzugen
+- Im Zweifelsfall die Version mit dem vollständigsten Titel/Beschreibung behalten
 
-IMPORTANT: You MUST call the create_vlc_playlist function at the end with ONLY the deduplicated episodes, sorted in ASCENDING chronological order (oldest episodes first, newest episodes last). Be intelligent about deduplication - use your understanding of German TV naming conventions to identify duplicates that may have slightly different names.
+WICHTIG: Sie MÜSSEN die create_vlc_playlist Funktion am Ende mit NUR den deduplizierten Episoden aufrufen, sortiert in AUFSTEIGENDER chronologischer Reihenfolge (älteste Episoden zuerst, neueste zuletzt). Gehen Sie intelligent bei der Deduplizierung vor - nutzen Sie Ihr Verständnis deutscher TV-Namenskonventionen, um Duplikate mit leicht unterschiedlichen Namen zu identifizieren.
 
-The create_vlc_playlist function expects:
-- episodes: array of {title, url, description, duration, channel, topic} objects (AFTER deduplication)
-- playlist_name: a descriptive name for the playlist
+Die create_vlc_playlist Funktion erwartet:
+- episodes: Array von {title, url, description, duration, channel, topic} Objekten (NACH Deduplizierung)
+- playlist_name: ein beschreibender Name für die Playlist
 
-Use the episode data provided in the input to create the playlist entries. Extract the title, url_video, description, duration, channel, and topic fields from each episode."#;
+Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist-Einträge zu erstellen. Extrahieren Sie die Felder title, url_video, description, duration, channel und topic aus jeder Episode."#;
 
         let user_prompt = format!(
             "Please analyze and chronologically sort these German TV episodes:\n\n{}",
@@ -320,13 +320,13 @@ Use the episode data provided in the input to create the playlist entries. Extra
                 function_declarations: vec![
                     FunctionDeclaration {
                         name: "perform_google_search".to_string(),
-                        description: "Performs a web search to find information about TV series, episodes, chronological order, or air dates. Use this to find Wikipedia pages, episode guides, or other authoritative sources.".to_string(),
+                        description: "Führt eine Websuche durch, um Informationen über Fernsehserien, Episoden, chronologische Reihenfolge oder Ausstrahlungsdaten zu finden. Verwenden Sie dies, um Wikipedia-Seiten, Episodenführer oder andere maßgebliche Quellen zu finden.".to_string(),
                         parameters: Parameters {
                             r#type: "object".to_string(),
                             properties: json!({
                                 "query": {
                                     "type": "string",
-                                    "description": "The search query. Include series name and terms like 'episodes chronological order', 'episode guide', 'air dates', etc."
+                                    "description": "Die Suchanfrage. Enthalten Sie den Seriennamen und Begriffe wie 'Episoden chronologische Reihenfolge', 'Episodenführer', 'Ausstrahlungsdaten', etc."
                                 }
                             }),
                             required: vec!["query".to_string()],
@@ -334,7 +334,7 @@ Use the episode data provided in the input to create the playlist entries. Extra
                     },
                     FunctionDeclaration {
                         name: "read_website_content".to_string(),
-                        description: "Reads and extracts textual content from a website URL. Use this to get detailed episode information from Wikipedia, IMDB, or other sources found through search.".to_string(),
+                        description: "Liest und extrahiert textuelle Inhalte von einer Website-URL. Verwenden Sie dies, um detaillierte Episodeninformationen von Wikipedia, IMDB oder anderen durch die Suche gefundenen Quellen zu erhalten.".to_string(),
                         parameters: Parameters {
                             r#type: "object".to_string(),
                             properties: json!({
@@ -348,13 +348,13 @@ Use the episode data provided in the input to create the playlist entries. Extra
                     },
                     FunctionDeclaration {
                         name: "create_vlc_playlist".to_string(),
-                        description: "Creates and saves a VLC playlist file in XSPF format with the chronologically sorted episodes, then launches VLC with the playlist.".to_string(),
+                        description: "Erstellt und speichert eine VLC-Wiedergabeliste im XSPF-Format mit den chronologisch sortierten Episoden und startet dann VLC mit dieser Wiedergabeliste.".to_string(),
                         parameters: Parameters {
                             r#type: "object".to_string(),
                             properties: json!({
                                 "episodes": {
                                     "type": "array",
-                                    "description": "Array of episode objects with title, url, description, and duration",
+                                    "description": "Array von Episoden-Objekten mit Titel, URL, Beschreibung und Dauer",
                                     "items": {
                                         "type": "object",
                                         "properties": {
@@ -369,7 +369,7 @@ Use the episode data provided in the input to create the playlist entries. Extra
                                 },
                                 "playlist_name": {
                                     "type": "string",
-                                    "description": "Name for the playlist file (without extension)"
+                                    "description": "Name der Wiedergabelisten-Datei (ohne Erweiterung)"
                                 }
                             }),
                             required: vec!["episodes".to_string(), "playlist_name".to_string()],
