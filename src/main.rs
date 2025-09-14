@@ -12,6 +12,42 @@ use std::fs::File;
 use std::io::Write;
 
 use std::process::Command;
+use serde_json;
+
+#[derive(serde::Serialize)]
+struct GeminiRequest {
+    contents: Vec<GeminiContent>,
+}
+
+#[derive(serde::Serialize)]
+struct GeminiContent {
+    parts: Vec<GeminiPart>,
+}
+
+#[derive(serde::Serialize)]
+struct GeminiPart {
+    text: String,
+}
+
+#[derive(serde::Deserialize)]
+struct GeminiResponse {
+    candidates: Vec<GeminiCandidate>,
+}
+
+#[derive(serde::Deserialize)]
+struct GeminiCandidate {
+    content: GeminiResponseContent,
+}
+
+#[derive(serde::Deserialize)]
+struct GeminiResponseContent {
+    parts: Vec<GeminiResponsePart>,
+}
+
+#[derive(serde::Deserialize)]
+struct GeminiResponsePart {
+    text: String,
+}
 
 #[derive(Parser)]
 #[command(name = "mwb")]
@@ -213,7 +249,7 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
     if params.count {
         println!("{}", filtered_results.len());
     } else if params.vlc_ai {
-        process_with_ai(&filtered_results)?;
+        process_with_ai(&filtered_results).await?;
     } else if let Some(quality) = params.vlc {
         // Validate quality parameter and set default if invalid
         let validated_quality = match quality.as_str() {
@@ -489,7 +525,7 @@ fn generate_vlc_playlist_filename(query: &str) -> String {
     format!("mwb_{truncated}_{timestamp}.xspf")
 }
 
-fn process_with_ai(results: &[mediathekviewweb::models::Item]) -> Result<()> {
+async fn process_with_ai(results: &[mediathekviewweb::models::Item]) -> Result<()> {
     if results.is_empty() {
         println!("{}", "No results found to process with AI.".yellow());
         return Ok(());
@@ -497,62 +533,84 @@ fn process_with_ai(results: &[mediathekviewweb::models::Item]) -> Result<()> {
 
     println!("{}", "Processing results with AI (Gemini)...".yellow());
 
-    // Convert results to JSON
-    let json_output = serde_json::to_string_pretty(results)?;
-
-    // Define the AI prompt
-    let ai_prompt = "Sortiere die Episoden chronologisch, am besten nach dem Wikipediaeintrag oder fernsehserien.de oder TVButler. Lösche doppelte Episoden. Erstelle eine VLC Playlist und schreibe sie in eine Datei. Starte vlc mit der Playlist. Zeige den Fortschritt für besseren User Interface. Speichere die Playliat auf jeden Fall ohne Nachfrage. Stelle keine Nachfragen.";
-
-    // Execute the Gemini command (try both gemini and gemini.cmd for Windows compatibility)
-    let mut cmd = match Command::new("gemini")
-        .arg("--yolo")
-        .arg("--prompt")
-        .arg(ai_prompt)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
-        .spawn()
-        .or_else(|_| {
-            // Try gemini.cmd for Windows
-            Command::new("gemini.cmd")
-                .arg("--yolo")
-                .arg("--prompt")
-                .arg(ai_prompt)
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::inherit())
-                .stderr(std::process::Stdio::inherit())
-                .spawn()
-        })
-    {
-        Ok(cmd) => cmd,
-        Err(e) => {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                println!("{}", "Error: 'gemini' command not found in PATH.".red());
-                println!("{}", "Please install the gemini CLI tool or run the command manually:".yellow());
-                println!("echo '{}' | gemini -y -p \"{}\"", json_output, ai_prompt);
-            } else {
-                println!("{}", format!("Error starting gemini command: {}", e).red());
-            }
+    // Get API key from environment variable
+    let api_key = match std::env::var("GEMINI_API_KEY") {
+        Ok(key) => key,
+        Err(_) => {
+            println!("{}", "Error: GEMINI_API_KEY environment variable not set.".red());
+            println!("{}", "Please set your Gemini API key:".yellow());
+            println!("export GEMINI_API_KEY=your_api_key_here");
+            
+            // Fallback to manual command suggestion
+            let json_output = serde_json::to_string_pretty(results)?;
+            let ai_prompt = "Sortiere die Episoden chronologisch, am besten nach dem Wikipediaeintrag oder fernsehserien.de oder TVButler. Lösche doppelte Episoden. Erstelle eine VLC Playlist und schreibe sie in eine Datei. Starte vlc mit der Playlist. Zeige den Fortschritt für besseren User Interface. Speichere die Playliat auf jeden Fall ohne Nachfrage. Stelle keine Nachfragen.";
+            println!("{}", "Alternative: use gemini CLI:".yellow());
+            println!("echo '{}' | gemini -y -p \"{}\"", json_output, ai_prompt);
             return Ok(());
         }
     };
 
-    // Write JSON data to stdin and close it
-    if let Some(mut stdin) = cmd.stdin.take() {
-        stdin.write_all(json_output.as_bytes())?;
-        stdin.flush()?;
-        drop(stdin); // Close stdin so gemini knows input is complete
-    }
+    // Initialize HTTP client
+    let client = reqwest::Client::new();
 
-    // Wait for the command to complete (output streams directly to console)
-    let status = cmd.wait()?;
+    // Convert results to JSON for the prompt
+    let json_output = serde_json::to_string_pretty(results)?;
 
-    if status.success() {
-        println!("\n{}", "AI processing completed successfully!".green());
-    } else {
-        println!("\n{}", format!("AI processing failed with exit code: {:?}", status.code()).red());
-        println!("{}", "You can try running the command manually:".yellow());
-        println!("echo '{}' | gemini -y -p \"{}\"", json_output, ai_prompt);
+    // Create the prompt with the JSON data
+    let full_prompt = format!(
+        "Hier sind Mediathek-Suchergebnisse als JSON:\n\n{}\n\nAufgabe: {}",
+        json_output,
+        "Sortiere die Episoden chronologisch, am besten nach dem Wikipediaeintrag oder fernsehserien.de oder TVButler. Lösche doppelte Episoden. Erstelle eine VLC Playlist und schreibe sie in eine Datei. Starte vlc mit der Playlist. Zeige den Fortschritt für besseren User Interface. Speichere die Playlist auf jeden Fall ohne Nachfrage. Stelle keine Nachfragen."
+    );
+
+    // Create request payload
+    let request_payload = GeminiRequest {
+        contents: vec![GeminiContent {
+            parts: vec![GeminiPart {
+                text: full_prompt,
+            }],
+        }],
+    };
+
+    // Make the API call
+    println!("{}", "Sending request to Gemini API...".yellow());
+    let url = format!("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={}", api_key);
+    
+    match client.post(&url)
+        .json(&request_payload)
+        .send()
+        .await {
+        Ok(response) => {
+            if response.status().is_success() {
+                match response.json::<GeminiResponse>().await {
+                    Ok(gemini_response) => {
+                        println!("\n{}", "AI processing completed successfully!".green());
+                        println!("\n{}", "Gemini Response:".bold().blue());
+                        
+                        // Extract text from the response
+                        if let Some(candidate) = gemini_response.candidates.first() {
+                            for part in &candidate.content.parts {
+                                println!("{}", part.text);
+                            }
+                        } else {
+                            println!("{}", "No response content received".yellow());
+                        }
+                    },
+                    Err(e) => {
+                        println!("{}", format!("Error parsing response: {}", e).red());
+                    }
+                }
+            } else {
+                let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+                println!("{}", format!("API request failed: {}", error_text).red());
+            }
+        }
+        Err(e) => {
+            println!("{}", format!("Error calling Gemini API: {}", e).red());
+            println!("{}", "You can try using the gemini CLI instead:".yellow());
+            let ai_prompt = "Sortiere die Episoden chronologisch, am besten nach dem Wikipediaeintrag oder fernsehserien.de oder TVButler. Lösche doppelte Episoden. Erstelle eine VLC Playlist und schreibe sie in eine Datei. Starte vlc mit der Playlist. Zeige den Fortschritt für besseren User Interface. Speichere die Playliat auf jeden Fall ohne Nachfrage. Stelle keine Nachfragen.";
+            println!("echo '{}' | gemini -y -p \"{}\"", json_output, ai_prompt);
+        }
     }
 
     Ok(())
