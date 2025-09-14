@@ -35,6 +35,7 @@ struct SearchParams {
     format: String,
     vlc: Option<String>,
     xspf_file: bool,
+    count: bool,
 }
 
 #[derive(Subcommand)]
@@ -78,6 +79,10 @@ enum Commands {
         #[arg(short = 'f', long, default_value = "oneline")]
         format: String,
 
+        /// Show only the count of results
+        #[arg(short = 'c', long)]
+        count: bool,
+
         /// Save video links as XSPF playlist and launch VLC with quality option (l=low, m=medium/default, h=HD)
         #[arg(short = 'v', long, value_name = "QUALITY", require_equals = true, num_args = 0..=1, default_missing_value = "m")]
         vlc: Option<String>,
@@ -111,6 +116,7 @@ async fn main() -> Result<()> {
             format,
             vlc,
             xspf_file,
+            count,
         } => {
             let params = SearchParams {
                 query_terms: query,
@@ -124,6 +130,7 @@ async fn main() -> Result<()> {
                 format,
                 vlc,
                 xspf_file,
+                count,
             };
             search_content(&client, params).await?;
         }
@@ -196,7 +203,9 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
         params.include_patterns,
     )?;
 
-    if let Some(quality) = params.vlc {
+    if params.count {
+        println!("{}", filtered_results.len());
+    } else if let Some(quality) = params.vlc {
         // Validate quality parameter and set default if invalid
         let validated_quality = match quality.as_str() {
             "l" | "low" => "l",

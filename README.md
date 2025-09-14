@@ -11,6 +11,7 @@ Built using the official [mediathekviewweb](https://crates.io/crates/mediathekvi
 - **Duration Selectors**: Filter content by duration directly in the query (e.g., `>90` for content longer than 90 minutes)
 - **Exclusion Filter**: Filter out unwanted content using regex patterns
 - **Multiple Output Formats**: View results as formatted tables, JSON, CSV, one-line format, or VLC playlists
+- **Count-Only Output**: Get just the number of matching results for quick statistics and scripting
 - **VLC Integration**: Create playlists and launch VLC directly with search results
 - **Channel Listing**: Browse all available broadcasting channels
 - **Flexible Sorting**: Sort results by date, duration, or channel
@@ -107,6 +108,10 @@ mwb search "Tatort"
 # Table format (detailed human-readable)
 mwb search "Tatort" -f table
 
+# Get only the count of results
+mwb search "Tatort" -c
+# Output: 42
+
 # JSON output for scripting using short form
 mwb search "Tatort" -f json
 
@@ -145,6 +150,41 @@ mwb search "dokumentation >60" -s 10 --vlc=h
 | `json` | Machine-readable JSON format with all metadata | Scripting and programmatic processing |
 | `csv` | Comma-separated values for spreadsheet import | Data analysis and Excel/LibreOffice |
 | `xspf` | XML playlist format compatible with VLC and other media players | Creating playlists for media players |
+
+### Count-Only Output
+
+Use the `--count` (or `-c`) flag when you only need to know how many results match your search criteria:
+
+```bash
+# Basic count
+mwb search "Tatort" -c
+# Output: 42
+
+# Count with filters
+mwb search "Tatort" -c --exclude "WDR" --size 100
+# Output: 67
+
+# Count for scripting
+if [ $(mwb search "live stream" -c) -gt 0 ]; then
+    echo "Live streams are available"
+fi
+
+# Automation example: Check for new Tatort episodes
+#!/bin/bash
+TATORT_COUNT=$(mwb search "Tatort" --no-future -c)
+if [ $TATORT_COUNT -gt 50 ]; then
+    echo "Found $TATORT_COUNT Tatort episodes - creating playlist"
+    mwb search "Tatort" --no-future -v
+else
+    echo "Only $TATORT_COUNT Tatort episodes found"
+fi
+```
+
+This is especially useful for:
+- **Monitoring**: Check if new content matching criteria is available
+- **Analytics**: Get quick statistics about content availability
+- **Scripting**: Use the count in conditional logic or automation
+- **Performance**: Much faster than fetching full results when you only need the count
 
 ### XSPF Playlist Format
 
@@ -250,6 +290,7 @@ OPTIONS:
     -b, --sort-by <SORT_BY>       Sort by field (timestamp, duration, channel) [default: timestamp]
     -r, --sort-order <SORT_ORDER> Sort order (asc or desc) [default: desc]
         --no-future               Exclude future content (default: include future content)
+    -c, --count                   Show only the count of results
     -f, --format <FORMAT>         Output format (table, json, csv, oneline, xspf) [default: oneline]
     -v, --vlc[=<QUALITY>]         Save video links as VLC playlist and launch VLC
                                   Quality options: l (low), m (medium, default), h (HD)
@@ -576,6 +617,7 @@ mwb search "natur umwelt tiere >30" -s 25 -i "wild|forest|ocean" -v
 | `--offset` | `-o` | Pagination offset |
 | `--sort-by` | `-b` | Sort field |
 | `--sort-order` | `-r` | Sort order (asc/desc) |
+| `--count` | `-c` | Show only count of results |
 | `--format` | `-f` | Output format |
 | `--vlc[=QUALITY]` | `-v[=QUALITY]` | Create VLC playlist with quality option |
 | `--no-future` | - | Exclude future content |
