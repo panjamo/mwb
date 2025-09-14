@@ -292,6 +292,44 @@ Playlist files are named based on your search query for easy identification:
 - Long queries are truncated to 50 characters
 - 4-digit timestamp suffix prevents filename conflicts
 
+### AI-Powered VLC Integration
+
+The `--vlc-ai` option leverages artificial intelligence to enhance your media experience by automatically processing search results through Gemini AI for intelligent sorting, deduplication, and playlist creation.
+
+```bash
+# Process results with AI for chronological sorting and VLC playlist creation
+mwb search "Ostfriesenkrimis >85" -e Audio --vlc-ai
+
+# Works with any search query - AI will sort episodes chronologically 
+mwb search "Tatort" --vlc-ai
+
+# AI processes JSON results and creates optimized VLC playlists
+mwb search "documentary climate" -s 50 --vlc-ai
+```
+
+The `--vlc-ai` feature:
+- **Intelligent Processing**: Sends search results to Gemini AI for analysis
+- **Chronological Sorting**: AI sorts episodes by air date using Wikipedia and other sources
+- **Duplicate Removal**: Automatically detects and removes duplicate episodes
+- **Smart Playlist Creation**: Creates VLC playlists optimized for binge-watching
+- **Auto-Launch**: Starts VLC with the processed playlist
+- **JSON Pipeline**: Converts results to JSON and pipes to `gemini -y -p "<prompt>"`
+
+**Requirements**:
+- `gemini` command must be installed and available in PATH
+- Active internet connection for AI processing
+- VLC media player installed for playlist playback
+
+**How it works**:
+1. Searches and filters results using mwb's powerful query syntax
+2. Converts results to JSON format
+3. Sends to Gemini AI with German prompt for chronological sorting and deduplication
+4. AI creates VLC playlist file and launches VLC automatically
+
+**AI Prompt**: "Sortiere die Episoden chronologisch, am besten nach dem Wikipediaeintrag. Lösche doppelte episoden. Create a vlc playlist to disk. Starte vlc mit der Playlist."
+
+If the `gemini` command is not available, the tool will provide the manual command for you to execute.
+
 ### List Available Channels
 
 ```bash
@@ -315,6 +353,8 @@ OPTIONS:
     -f, --format <FORMAT>         Output format (table, json, csv, oneline, onelinetheme, xspf) [default: onelinetheme]
     -v, --vlc[=<QUALITY>]         Save video links as VLC playlist and launch VLC
                                   Quality options: l (low), m (medium, default), h (HD)
+        --vlc-ai                  Process results with AI (Gemini) for chronological sorting,
+                                  deduplication, and VLC playlist creation
 ```
 
 ## Search Syntax Details
@@ -569,6 +609,22 @@ mwb search "krimi investigation >70" -s 30 -e "audio|kurz|short" -v
 # International content playlist from specific channels with chronological info
 # Creates file: mwb__Arte__3Sat_m60_1234.m3u
 mwb search "!Arte !3Sat >60" -s 25 -i "deutsch|german|english" -v
+```
+
+### AI-Powered Smart Playlists
+```bash
+# Let AI sort Ostfriesenkrimis chronologically and create optimized VLC playlist
+# AI removes duplicates and sorts by episode order from Wikipedia
+mwb search "Ostfriesenkrimis >85" -e Audio --vlc-ai
+
+# Smart Tatort playlist - AI sorts by air date and removes duplicate broadcasts
+mwb search "Tatort" -s 100 --vlc-ai
+
+# AI-curated documentary collection with intelligent sorting and deduplication
+mwb search "dokumentation climate change >30" -s 50 --vlc-ai
+
+# Crime series with AI chronological ordering - perfect for binge watching
+mwb search "krimi investigation >60" -e "audio|trailer" --vlc-ai
 ```
 
 ### Curated Content Collections

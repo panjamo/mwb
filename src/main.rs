@@ -34,6 +34,7 @@ struct SearchParams {
     exclude_future: bool,
     format: String,
     vlc: Option<String>,
+    vlc_ai: bool,
     xspf_file: bool,
     count: bool,
 }
@@ -87,6 +88,10 @@ enum Commands {
         #[arg(short = 'v', long, value_name = "QUALITY", require_equals = true, num_args = 0..=1, default_missing_value = "m")]
         vlc: Option<String>,
 
+        /// Process results with AI (Gemini) for chronological sorting, deduplication, and VLC playlist creation
+        #[arg(long = "vlc-ai")]
+        vlc_ai: bool,
+
         /// Save XSPF playlist to file (use with -f xspf)
         #[arg(short = 'x', long)]
         xspf_file: bool,
@@ -115,6 +120,7 @@ async fn main() -> Result<()> {
             exclude_future,
             format,
             vlc,
+            vlc_ai,
             xspf_file,
             count,
         } => {
@@ -129,6 +135,7 @@ async fn main() -> Result<()> {
                 exclude_future,
                 format,
                 vlc,
+                vlc_ai,
                 xspf_file,
                 count,
             };
@@ -205,6 +212,8 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
 
     if params.count {
         println!("{}", filtered_results.len());
+    } else if params.vlc_ai {
+        process_with_ai(&filtered_results)?;
     } else if let Some(quality) = params.vlc {
         // Validate quality parameter and set default if invalid
         let validated_quality = match quality.as_str() {
@@ -478,6 +487,89 @@ fn generate_vlc_playlist_filename(query: &str) -> String {
         % 10000; // Last 4 digits
 
     format!("mwb_{truncated}_{timestamp}.xspf")
+}
+
+fn process_with_ai(results: &[mediathekviewweb::models::Item]) -> Result<()> {
+    if results.is_empty() {
+        println!("{}", "No results found to process with AI.".yellow());
+        return Ok(());
+    }
+
+    println!("{}", "Processing results with AI (Gemini)...".yellow());
+
+    // Convert results to JSON
+    let json_output = serde_json::to_string_pretty(results)?;
+
+    // Define the AI prompt
+    let ai_prompt = "Sortiere die Episoden chronologisch, am besten nach dem Wikipediaeintrag. Lösche doppelte Episoden. Erstelle eine VLC Playlist und schreibe sie in eine Datei. Starte vlc mit der Playlist.";
+
+    // Execute the Gemini command (try both gemini and gemini.cmd for Windows compatibility)
+    let mut cmd = match Command::new("gemini")
+        .arg("-y")
+        .arg("-p")
+        .arg(ai_prompt)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .or_else(|_| {
+            // Try gemini.cmd for Windows
+            Command::new("gemini.cmd")
+                .arg("-y")
+                .arg("-p")
+                .arg(ai_prompt)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+        })
+    {
+        Ok(cmd) => cmd,
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                println!("{}", "Error: 'gemini' command not found in PATH.".red());
+                println!("{}", "Please install the gemini CLI tool or run the command manually:".yellow());
+                println!("echo '{}' | gemini -y -p \"{}\"", json_output, ai_prompt);
+            } else {
+                println!("{}", format!("Error starting gemini command: {}", e).red());
+            }
+            return Ok(());
+        }
+    };
+
+    // Write JSON data to stdin and close it
+    if let Some(mut stdin) = cmd.stdin.take() {
+        stdin.write_all(json_output.as_bytes())?;
+        stdin.flush()?;
+        drop(stdin); // Close stdin so gemini knows input is complete
+    }
+
+    // Wait for the command to complete and capture output
+    let output = cmd.wait_with_output()?;
+
+    if output.status.success() {
+        println!("{}", "AI processing completed successfully!".green());
+        // Print stdout from gemini (if any)
+        if !output.stdout.is_empty() {
+            println!("{}", String::from_utf8_lossy(&output.stdout));
+        }
+    } else {
+        println!("{}", format!("AI processing failed with exit code: {:?}", output.status.code()).red());
+        // Print stderr from gemini (if any)
+        if !output.stderr.is_empty() {
+            println!("{}", "Gemini error output:".yellow());
+            println!("{}", String::from_utf8_lossy(&output.stderr));
+        }
+        // Print stdout from gemini (if any) in case of error
+        if !output.stdout.is_empty() {
+            println!("{}", "Gemini stdout:".yellow());
+            println!("{}", String::from_utf8_lossy(&output.stdout));
+        }
+        println!("{}", "You can try running the command manually:".yellow());
+        println!("echo '{}' | gemini -y -p \"{}\"", json_output, ai_prompt);
+    }
+
+    Ok(())
 }
 
 fn print_table(
