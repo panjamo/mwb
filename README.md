@@ -10,7 +10,7 @@ Built using the official [mediathekviewweb](https://crates.io/crates/mediathekvi
 - **Advanced Filtering**: Use MediathekView's powerful search syntax with selectors
 - **Duration Selectors**: Filter content by duration directly in the query (e.g., `>90` for content longer than 90 minutes)
 - **Exclusion Filter**: Filter out unwanted content using regex patterns
-- **Multiple Output Formats**: View results as formatted tables, JSON, CSV, or VLC playlists
+- **Multiple Output Formats**: View results as formatted tables, JSON, CSV, one-line format, or VLC playlists
 - **VLC Integration**: Create playlists and launch VLC directly with search results
 - **Channel Listing**: Browse all available broadcasting channels
 - **Flexible Sorting**: Sort results by date, duration, or channel
@@ -101,14 +101,20 @@ mwb search "!Arte <20" -b timestamp -r desc -s 20
 ### Output Formats
 
 ```bash
-# Default table format (human-readable)
+# Default oneline format (compact with colors)
 mwb search "Tatort"
+
+# Table format (detailed human-readable)
+mwb search "Tatort" -f table
 
 # JSON output for scripting using short form
 mwb search "Tatort" -f json
 
 # CSV output for spreadsheets using short form
 mwb search "Tatort" -f csv > results.csv
+
+# One-line format (compact output with colors)
+mwb search "Tatort" -f oneline
 
 # XSPF playlist output (XML Shareable Playlist Format) to stdout
 mwb search "Tatort" -f xspf
@@ -129,6 +135,16 @@ mwb search "dokumentation >60" -s 10 -v=l
 # Creates file: mwb_dokumentation_m60_1234.xspf
 mwb search "dokumentation >60" -s 10 --vlc=h
 ```
+
+#### Format Descriptions
+
+| Format | Description | Best For |
+|--------|-------------|----------|
+| `oneline` | Compact single-line format: `[Channel] Title (Date) [Duration] - URL` | Quick scanning and terminal output *(default)* |
+| `table` | Human-readable formatted output with colors and full details | Interactive browsing and viewing |
+| `json` | Machine-readable JSON format with all metadata | Scripting and programmatic processing |
+| `csv` | Comma-separated values for spreadsheet import | Data analysis and Excel/LibreOffice |
+| `xspf` | XML playlist format compatible with VLC and other media players | Creating playlists for media players |
 
 ### XSPF Playlist Format
 
@@ -234,7 +250,7 @@ OPTIONS:
     -b, --sort-by <SORT_BY>       Sort by field (timestamp, duration, channel) [default: timestamp]
     -r, --sort-order <SORT_ORDER> Sort order (asc or desc) [default: desc]
         --no-future               Exclude future content (default: include future content)
-    -f, --format <FORMAT>         Output format (table, json, csv) [default: table]
+    -f, --format <FORMAT>         Output format (table, json, csv, oneline, xspf) [default: oneline]
     -v, --vlc[=<QUALITY>]         Save video links as VLC playlist and launch VLC
                                   Quality options: l (low), m (medium, default), h (HD)
 ```
