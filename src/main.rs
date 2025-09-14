@@ -7,6 +7,7 @@ use mediathekviewweb::{
     Mediathek,
 };
 use regex::Regex;
+use std::time::Instant;
 
 use std::fs::File;
 use std::io::Write;
@@ -40,6 +41,7 @@ struct SearchParams {
     vlc_ai: bool,
     xspf_file: bool,
     count: bool,
+    verbose: bool,
 }
 
 #[derive(Subcommand)]
@@ -98,6 +100,10 @@ enum Commands {
         /// Save XSPF playlist to file (use with -f xspf)
         #[arg(short = 'x', long)]
         xspf_file: bool,
+
+        /// Enable verbose logging of search requests
+        #[arg(long)]
+        verbose: bool,
     },
     /// List available channels
     Channels,
@@ -126,6 +132,7 @@ async fn main() -> Result<()> {
             vlc_ai,
             xspf_file,
             count,
+            verbose,
         } => {
             let params = SearchParams {
                 query_terms: query,
@@ -141,6 +148,7 @@ async fn main() -> Result<()> {
                 vlc_ai,
                 xspf_file,
                 count,
+                verbose,
             };
             search_content(&client, params).await?;
         }
@@ -167,6 +175,27 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
         // Let the API handle natural search across all fields
         client.query_string(&search_terms_only, false)
     };
+
+    if params.verbose {
+        println!("{}", "=== MediathekView Search Request ===".bright_yellow().bold());
+        println!("{}: {}", "Original query".bold(), query_string.green());
+        if !duration_filters.is_empty() {
+            println!("{}: {}", "Duration filters".bold(), duration_filters.join(", ").cyan());
+        }
+        println!("{}: {}", "Search terms".bold(), if search_terms_only.is_empty() { "<empty>".to_string() } else { search_terms_only.clone() }.cyan());
+        println!("{}: {}", "Size".bold(), params.size.to_string().cyan());
+        println!("{}: {}", "Offset".bold(), params.offset.to_string().cyan());
+        println!("{}: {}", "Sort by".bold(), params.sort_by.cyan());
+        println!("{}: {}", "Sort order".bold(), params.sort_order.cyan());
+        println!("{}: {}", "Exclude future".bold(), params.exclude_future.to_string().cyan());
+        if let Some(ref patterns) = params.exclude_patterns {
+            println!("{}: {}", "Exclude patterns".bold(), patterns.join(", ").red());
+        }
+        if let Some(ref patterns) = params.include_patterns {
+            println!("{}: {}", "Include patterns".bold(), patterns.join(", ").green());
+        }
+        println!("{}", "===================================".bright_yellow().bold());
+    }
 
     // Apply duration filters extracted from the query
     for filter in duration_filters {
@@ -204,14 +233,38 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
     query_builder = query_builder.sort_by(sort_field).sort_order(sort_direction);
 
     // Execute the query
+    let start_time = if params.verbose { Some(Instant::now()) } else { None };
+    
+    if params.verbose {
+        println!("{}", "Executing API request...".bright_blue().bold());
+    }
+    
     let result = query_builder.send().await?;
+    
+    if params.verbose {
+        if let Some(start) = start_time {
+            let duration = start.elapsed();
+            println!("{}: {:.2}s", "API Response time".bold(), duration.as_secs_f64().to_string().green());
+            println!("{}: {}", "Total results found".bold(), result.results.len().to_string().cyan());
+            println!("{}: {}", "Total results available".bold(), result.query_info.total_results.to_string().cyan());
+        }
+    }
 
+    // Save original count before moving results
+    let original_count = result.results.len();
+    
     // Apply client-side regex filters
     let filtered_results = apply_regex_filters(
         result.results,
         params.exclude_patterns,
         params.include_patterns,
     )?;
+
+    if params.verbose && filtered_results.len() != original_count {
+        println!("{}: {} → {}", "After regex filtering".bold(), 
+                original_count.to_string().yellow(), 
+                filtered_results.len().to_string().green());
+    }
 
     if params.count {
         println!("{}", filtered_results.len());
