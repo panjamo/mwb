@@ -75,8 +75,8 @@ enum Commands {
         #[arg(long = "no-future")]
         exclude_future: bool,
 
-        /// Output format (table, json, csv, xspf, oneline)
-        #[arg(short = 'f', long, default_value = "oneline")]
+        /// Output format (table, json, csv, xspf, oneline, onelinetheme)
+        #[arg(short = 'f', long, default_value = "onelinetheme")]
         format: String,
 
         /// Show only the count of results
@@ -234,6 +234,9 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
             }
             "oneline" => {
                 print_oneline(&filtered_results);
+            }
+            "onelinetheme" => {
+                print_oneline_theme(&filtered_results);
             }
             _ => {
                 print_table(&filtered_results, &result.query_info);
@@ -601,6 +604,28 @@ fn print_oneline(results: &[mediathekviewweb::models::Item]) {
             date.yellow(),
             if duration.is_empty() { "".to_string() } else { format!("[{}]", duration.green()) },
             entry.url_video.bright_blue()
+        );
+    }
+}
+
+fn print_oneline_theme(results: &[mediathekviewweb::models::Item]) {
+    for entry in results {
+        let date = DateTime::from_timestamp(entry.timestamp, 0)
+            .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+            .unwrap_or_default();
+    
+        let duration = entry
+            .duration
+            .map_or("".to_string(), |d| format!("{}min", d.as_secs() / 60));
+    
+        // Format: [Channel] Title (Date) [Duration] - Theme
+        println!(
+            "[{}] {} ({}) {} - {}",
+            entry.channel.bright_cyan(),
+            entry.title.bright_white(),
+            date.yellow(),
+            if duration.is_empty() { "".to_string() } else { format!("[{}]", duration.green()) },
+            entry.topic.bright_magenta()
         );
     }
 }

@@ -102,7 +102,7 @@ mwb search "!Arte <20" -b timestamp -r desc -s 20
 ### Output Formats
 
 ```bash
-# Default oneline format (compact with colors)
+# Default onelinetheme format (compact with colors, shows theme)
 mwb search "Tatort"
 
 # Table format (detailed human-readable)
@@ -118,8 +118,15 @@ mwb search "Tatort" -f json
 # CSV output for spreadsheets using short form
 mwb search "Tatort" -f csv > results.csv
 
-# One-line format (compact output with colors)
+# One-line format (compact output with colors) - shows URL
 mwb search "Tatort" -f oneline
+
+# One-line theme format (shows theme/topic instead of URL) - default
+mwb search "Tatort" -f onelinetheme
+
+# Compare the two oneline formats:
+# oneline:      [WDR] Kollaps (2015) (2025-10-14 18:15) [88min] - https://wdrmedien-a.akamaihd.net/medp/...
+# onelinetheme: [WDR] Kollaps (2015) (2025-10-14 18:15) [88min] - Tatort
 
 # XSPF playlist output (XML Shareable Playlist Format) to stdout
 mwb search "Tatort" -f xspf
@@ -145,7 +152,8 @@ mwb search "dokumentation >60" -s 10 --vlc=h
 
 | Format | Description | Best For |
 |--------|-------------|----------|
-| `oneline` | Compact single-line format: `[Channel] Title (Date) [Duration] - URL` | Quick scanning and terminal output *(default)* |
+| `onelinetheme` | Compact single-line format: `[Channel] Title (Date) [Duration] - Theme` | Content discovery and topic browsing *(default)* |
+| `oneline` | Compact single-line format: `[Channel] Title (Date) [Duration] - URL` | Quick scanning and terminal output |
 | `table` | Human-readable formatted output with colors and full details | Interactive browsing and viewing |
 | `json` | Machine-readable JSON format with all metadata | Scripting and programmatic processing |
 | `csv` | Comma-separated values for spreadsheet import | Data analysis and Excel/LibreOffice |
@@ -185,6 +193,19 @@ This is especially useful for:
 - **Analytics**: Get quick statistics about content availability
 - **Scripting**: Use the count in conditional logic or automation
 - **Performance**: Much faster than fetching full results when you only need the count
+
+### When to Use Each One-Line Format
+
+**Use `oneline` when:**
+- You need the video URLs for direct access or scripting
+- Building playlists or downloading content
+- Working with automation that processes video links
+
+**Use `onelinetheme` (default) when:**
+- Browsing content by topic or category
+- You want cleaner, more readable output
+- Exploring what types of content are available
+- The theme/topic is more relevant than the URL
 
 ### XSPF Playlist Format
 
@@ -291,7 +312,7 @@ OPTIONS:
     -r, --sort-order <SORT_ORDER> Sort order (asc or desc) [default: desc]
         --no-future               Exclude future content (default: include future content)
     -c, --count                   Show only the count of results
-    -f, --format <FORMAT>         Output format (table, json, csv, oneline, xspf) [default: oneline]
+    -f, --format <FORMAT>         Output format (table, json, csv, oneline, onelinetheme, xspf) [default: onelinetheme]
     -v, --vlc[=<QUALITY>]         Save video links as VLC playlist and launch VLC
                                   Quality options: l (low), m (medium, default), h (HD)
 ```
