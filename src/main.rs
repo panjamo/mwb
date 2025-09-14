@@ -449,10 +449,7 @@ fn create_vlc_playlist_and_launch(
         }
         Err(e) => {
             println!("{}", format!("Failed to launch VLC: {e}").red());
-            println!(
-                "{}",
-                format!("Playlist saved as: {playlist_name}").yellow()
-            );
+            println!("{}", format!("Playlist saved as: {playlist_name}").yellow());
             println!("{}", "You can manually open this file with VLC.".yellow());
         }
     }
@@ -467,7 +464,7 @@ fn generate_vlc_playlist_filename(query: &str) -> String {
         .map(|c| match c {
             'a'..='z' | 'A'..='Z' | '0'..='9' => c,
             '>' | '<' => 'm', // Convert > to "more", < to "less" indicator
-            _ => '_', // includes spaces and all other characters
+            _ => '_',         // includes spaces and all other characters
         })
         .collect::<String>()
         .trim_matches('_')
@@ -506,9 +503,19 @@ async fn process_with_ai(results: &[mediathekviewweb::models::Item]) -> Result<(
     let processor = match AIProcessor::new().await {
         Ok(processor) => processor,
         Err(e) => {
-            println!("{}", format!("❌ Failed to initialize AI processor: {}", e).red());
-            println!("{}", "💡 Make sure you have set GOOGLE_API_KEY in your environment or .env file".yellow());
-            println!("{}", "   You can get an API key from: https://aistudio.google.com/app/apikey".cyan());
+            println!(
+                "{}",
+                format!("❌ Failed to initialize AI processor: {}", e).red()
+            );
+            println!(
+                "{}",
+                "💡 Make sure you have set GOOGLE_API_KEY in your environment or .env file"
+                    .yellow()
+            );
+            println!(
+                "{}",
+                "   You can get an API key from: https://aistudio.google.com/app/apikey".cyan()
+            );
             return Ok(());
         }
     };
@@ -523,18 +530,96 @@ async fn process_with_ai(results: &[mediathekviewweb::models::Item]) -> Result<(
             // Optionally save the results to a file
             let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
             let filename = format!("ai_sorted_episodes_{}.txt", timestamp);
-            
+
             if let Ok(mut file) = File::create(&filename) {
-                writeln!(file, "AI Sorted Episodes - Generated on {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"))?;
+                writeln!(
+                    file,
+                    "AI Sorted Episodes - Generated on {}",
+                    chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
+                )?;
                 writeln!(file, "{}", "=".repeat(70))?;
                 writeln!(file, "{}", response)?;
                 println!("\n{}", format!("📄 Results saved to: {}", filename).cyan());
             }
         }
         Err(e) => {
-            println!("{}", format!("❌ AI processing failed: {}", e).red());
-            println!("{}", "💡 The AI might need more specific episode information or the search tools might be having issues".yellow());
+            let error_msg = e.to_string().to_lowercase();
+
+            if error_msg.contains("401")
+                || error_msg.contains("unauthorized")
+                || error_msg.contains("api key")
+            {
+                println!("{}", "🔑 API Key Issue Detected!".yellow().bold());
+                println!();
+                println!("{}", "❌ There's a problem with your Google API key.".red());
+                println!();
+                println!("{}", "💡 To fix this:".cyan().bold());
+                println!(
+                    "{}",
+                    "   1. Visit: https://aistudio.google.com/app/u/5/apikey".cyan()
+                );
+                println!("{}", "   2. Generate a new API key if needed".cyan());
+                println!(
+                    "{}",
+                    "   3. Copy the key to your .env file as GOOGLE_API_KEY=your_key_here".cyan()
+                );
+                println!();
+                println!("{}", "🌐 Opening API key page in your browser...".green());
+
+                // Try to open the API key page in browser
+                let url = "https://aistudio.google.com/app/u/5/apikey";
+                let _ = open_browser_url(url);
+            } else if error_msg.contains("429")
+                || error_msg.contains("quota")
+                || error_msg.contains("rate limit")
+            {
+                println!("{}", "⏱️  API Quota/Rate Limit Exceeded!".yellow().bold());
+                println!();
+                println!("{}", "❌ You've exceeded the API quota limits.".red());
+                println!();
+                println!("{}", "💡 Solutions:".cyan().bold());
+                println!("{}", "   1. Wait a few minutes and try again".cyan());
+                println!(
+                    "{}",
+                    "   2. Check your quota limits at the API console".cyan()
+                );
+                println!(
+                    "{}",
+                    "   3. Consider upgrading to a paid plan for higher limits".cyan()
+                );
+                println!();
+                println!(
+                    "{}",
+                    "🌐 Opening Google AI Studio to check your usage...".green()
+                );
+
+                let url = "https://aistudio.google.com/app/u/5/apikey";
+                let _ = open_browser_url(url);
+            } else {
+                println!("{}", format!("❌ AI processing failed: {}", e).red());
+                println!("{}", "💡 The AI might need more specific episode information or the search tools might be having issues".yellow());
+            }
         }
+    }
+
+    Ok(())
+}
+
+/// Open URL in the default browser
+fn open_browser_url(url: &str) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("cmd").args(["/C", "start", url]).spawn()?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open").arg(url).spawn()?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        Command::new("xdg-open").arg(url).spawn()?;
     }
 
     Ok(())
@@ -551,10 +636,7 @@ fn print_table(
     );
     println!("Showing: {}", query_info.result_count.to_string().green());
     let search_time = query_info.search_engine_time.as_millis();
-    println!(
-        "Search time: {}ms",
-        format!("{search_time:.2}").yellow()
-    );
+    println!("Search time: {}ms", format!("{search_time:.2}").yellow());
     println!();
 
     if results.is_empty() {
@@ -615,7 +697,6 @@ fn print_table(
 
         println!();
     }
-
 }
 
 fn print_csv(results: &[mediathekviewweb::models::Item]) {
@@ -651,18 +732,22 @@ fn print_oneline(results: &[mediathekviewweb::models::Item]) {
         let date = DateTime::from_timestamp(entry.timestamp, 0)
             .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
             .unwrap_or_default();
-    
+
         let duration = entry
             .duration
             .map_or("".to_string(), |d| format!("{}min", d.as_secs() / 60));
-    
+
         // Format: [Channel] Title (Date) [Duration] - URL
         println!(
             "[{}] {} ({}) {} - {}",
             entry.channel.bright_cyan(),
             entry.title.bright_white(),
             date.yellow(),
-            if duration.is_empty() { "".to_string() } else { format!("[{}]", duration.green()) },
+            if duration.is_empty() {
+                "".to_string()
+            } else {
+                format!("[{}]", duration.green())
+            },
             entry.url_video.bright_blue()
         );
     }
@@ -673,18 +758,22 @@ fn print_oneline_theme(results: &[mediathekviewweb::models::Item]) {
         let date = DateTime::from_timestamp(entry.timestamp, 0)
             .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
             .unwrap_or_default();
-    
+
         let duration = entry
             .duration
             .map_or("".to_string(), |d| format!("{}min", d.as_secs() / 60));
-    
+
         // Format: [Channel] Title (Date) [Duration] - Theme
         println!(
             "[{}] {} ({}) {} - {}",
             entry.channel.bright_cyan(),
             entry.title.bright_white(),
             date.yellow(),
-            if duration.is_empty() { "".to_string() } else { format!("[{}]", duration.green()) },
+            if duration.is_empty() {
+                "".to_string()
+            } else {
+                format!("[{}]", duration.green())
+            },
             entry.topic.bright_magenta()
         );
     }
@@ -727,9 +816,9 @@ fn generate_xspf_content(
 
     // Generate track entries with metadata
     for entry in results {
-        let duration_ms = entry.duration.map_or(0, |d| {
-            u64::try_from(d.as_millis()).unwrap_or(u64::MAX)
-        });
+        let duration_ms = entry
+            .duration
+            .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
         let date_readable = DateTime::from_timestamp(entry.timestamp, 0)
             .map(|dt| dt.format("%Y-%m-%d").to_string())
             .unwrap_or_default();

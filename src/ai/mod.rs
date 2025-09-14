@@ -1,5 +1,5 @@
 //! AI module for integrating with Google Gemini API
-//! 
+//!
 //! This module provides functionality for:
 //! - Direct Gemini API integration via HTTP requests
 //! - Web search capabilities
@@ -9,6 +9,7 @@
 pub mod tools;
 
 use anyhow::Result;
+use colored::Colorize;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -36,14 +37,16 @@ struct Content {
 #[derive(Debug, Serialize, Clone)]
 #[serde(untagged)]
 enum Part {
-    Text { text: String },
-    FunctionCall { 
-        #[serde(rename = "functionCall")]
-        function_call: FunctionCall 
+    Text {
+        text: String,
     },
-    FunctionResponse { 
+    FunctionCall {
+        #[serde(rename = "functionCall")]
+        function_call: FunctionCall,
+    },
+    FunctionResponse {
         #[serde(rename = "functionResponse")]
-        function_response: FunctionResponse 
+        function_response: FunctionResponse,
     },
 }
 
@@ -95,11 +98,13 @@ struct GeminiResponse {
 struct Candidate {
     content: ResponseContent,
     #[serde(rename = "finishReason")]
+    #[allow(dead_code)]
     finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ResponseContent {
+    #[allow(dead_code)]
     role: String,
     parts: Vec<ResponsePart>,
 }
@@ -107,10 +112,12 @@ struct ResponseContent {
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 enum ResponsePart {
-    Text { text: String },
-    FunctionCall { 
+    Text {
+        text: String,
+    },
+    FunctionCall {
         #[serde(rename = "functionCall")]
-        function_call: ResponseFunctionCall 
+        function_call: ResponseFunctionCall,
     },
 }
 
@@ -131,8 +138,11 @@ impl AIProcessor {
     /// Create a new AI processor
     pub async fn new() -> Result<Self> {
         let api_key = env::var("GOOGLE_API_KEY")
-            .map_err(|_| anyhow::anyhow!("GOOGLE_API_KEY environment variable not found. Please set it in a .env file or environment."))?;
-        
+            .map_err(|_| {
+                Self::handle_api_key_error();
+                anyhow::anyhow!("GOOGLE_API_KEY environment variable not found. Please set it in a .env file or environment.")
+            })?;
+
         let client = Client::builder()
             .user_agent("mwb-cli/1.0")
             .timeout(std::time::Duration::from_secs(120))
@@ -140,20 +150,30 @@ impl AIProcessor {
 
         let base_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent".to_string();
 
-        Ok(Self { client, api_key, base_url })
+        Ok(Self {
+            client,
+            api_key,
+            base_url,
+        })
     }
 
     /// Process TV show/series results with AI for chronological sorting and VLC playlist creation
-    pub async fn process_episodes(&self, results: &[mediathekviewweb::models::Item]) -> Result<String> {
+    pub async fn process_episodes(
+        &self,
+        results: &[mediathekviewweb::models::Item],
+    ) -> Result<String> {
         if results.is_empty() {
             return Err(anyhow::anyhow!("No results found to process with AI."));
         }
 
-        println!("🤖 Processing {} results with Gemini AI for chronological sorting...", results.len());
+        println!(
+            "🤖 Processing {} results with Gemini AI for chronological sorting...",
+            results.len()
+        );
 
         // Convert results to a more structured format for the AI
         let episodes_json = self.format_episodes_for_ai(results)?;
-        
+
         let system_prompt = r#"You are an expert TV series analyst and VLC playlist creator. Your task is to:
 
 1. Analyze the provided German TV episodes/shows
@@ -183,15 +203,18 @@ The create_vlc_playlist function expects:
 
 Use the episode data provided in the input to create the playlist entries. Extract the title, url_video, and description fields from each episode."#;
 
-        let user_prompt = format!("Please analyze and chronologically sort these German TV episodes:\n\n{}", episodes_json);
+        let user_prompt = format!(
+            "Please analyze and chronologically sort these German TV episodes:\n\n{}",
+            episodes_json
+        );
 
         let tools = self.create_tools();
-        let mut conversation_history = vec![
-            Content {
-                role: "user".to_string(),
-                parts: vec![Part::Text { text: format!("{}\n\n{}", system_prompt, user_prompt) }],
-            }
-        ];
+        let mut conversation_history = vec![Content {
+            role: "user".to_string(),
+            parts: vec![Part::Text {
+                text: format!("{}\n\n{}", system_prompt, user_prompt),
+            }],
+        }];
 
         // Main conversation loop with tool calling
         let max_iterations = 10;
@@ -207,7 +230,13 @@ Use the episode data provided in the input to create the playlist entries. Extra
                 },
             };
 
-            let response = self.call_gemini_api(&request).await?;
+            let response = match self.call_gemini_api(&request).await {
+                Ok(response) => response,
+                Err(e) => {
+                    Self::handle_api_error(&e);
+                    return Err(e);
+                }
+            };
 
             if let Some(candidate) = response.candidates.first() {
                 let content = &candidate.content;
@@ -217,7 +246,7 @@ Use the episode data provided in the input to create the playlist entries. Extra
                     match part {
                         ResponsePart::FunctionCall { function_call } => {
                             println!("🔧 Gemini is calling tool: {}", function_call.name);
-                            
+
                             let tool_result = self.execute_function_call(function_call).await?;
 
                             // Add the model's request to history
@@ -227,14 +256,16 @@ Use the episode data provided in the input to create the playlist entries. Extra
                                     function_call: FunctionCall {
                                         name: function_call.name.clone(),
                                         args: function_call.args.clone(),
-                                    }
+                                    },
                                 }],
                             });
 
                             // Add the tool's response to history
                             conversation_history.push(Content {
                                 role: "user".to_string(),
-                                parts: vec![Part::FunctionResponse { function_response: tool_result }],
+                                parts: vec![Part::FunctionResponse {
+                                    function_response: tool_result,
+                                }],
                             });
 
                             // Continue the loop to send the tool result back to the model
@@ -249,7 +280,9 @@ Use the episode data provided in the input to create the playlist entries. Extra
             }
 
             if iteration == max_iterations {
-                return Err(anyhow::anyhow!("Maximum iterations reached without final answer"));
+                return Err(anyhow::anyhow!(
+                    "Maximum iterations reached without final answer"
+                ));
             }
         }
 
@@ -259,8 +292,9 @@ Use the episode data provided in the input to create the playlist entries. Extra
     /// Make HTTP request to Gemini API
     async fn call_gemini_api(&self, request: &GeminiRequest) -> Result<GeminiResponse> {
         let url = format!("{}?key={}", self.base_url, self.api_key);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(&url)
             .header("Content-Type", "application/json")
             .json(request)
@@ -270,7 +304,11 @@ Use the episode data provided in the input to create the playlist entries. Extra
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            return Err(anyhow::anyhow!("Gemini API error {}: {}", status, error_text));
+            return Err(anyhow::anyhow!(
+                "Gemini API error {}: {}",
+                status,
+                error_text
+            ));
         }
 
         let gemini_response: GeminiResponse = response.json().await?;
@@ -343,17 +381,20 @@ Use the episode data provided in the input to create the playlist entries. Extra
 
     /// Format episodes for AI processing
     fn format_episodes_for_ai(&self, results: &[mediathekviewweb::models::Item]) -> Result<String> {
-        let formatted: Vec<Value> = results.iter().map(|item| {
-            json!({
-                "title": item.title,
-                "topic": item.topic,
-                "description": item.description,
-                "duration": item.duration,
-                "timestamp": item.timestamp,
-                "channel": item.channel,
-                "url": item.url_video,
+        let formatted: Vec<Value> = results
+            .iter()
+            .map(|item| {
+                json!({
+                    "title": item.title,
+                    "topic": item.topic,
+                    "description": item.description,
+                    "duration": item.duration,
+                    "timestamp": item.timestamp,
+                    "channel": item.channel,
+                    "url": item.url_video,
+                })
             })
-        }).collect();
+            .collect();
 
         serde_json::to_string_pretty(&formatted)
             .map_err(|e| anyhow::anyhow!("Failed to serialize episodes: {}", e))
@@ -366,19 +407,23 @@ Use the episode data provided in the input to create the playlist entries. Extra
 
         let result_string = match function_name.as_str() {
             "perform_google_search" => {
-                let query = args["query"].as_str()
+                let query = args["query"]
+                    .as_str()
                     .ok_or_else(|| anyhow::anyhow!("Missing 'query' argument"))?;
                 perform_google_search(query).await?
             }
             "read_website_content" => {
-                let url = args["url"].as_str()
+                let url = args["url"]
+                    .as_str()
                     .ok_or_else(|| anyhow::anyhow!("Missing 'url' argument"))?;
                 read_website_content(url).await?
             }
             "create_vlc_playlist" => {
-                let episodes = args["episodes"].as_array()
+                let episodes = args["episodes"]
+                    .as_array()
                     .ok_or_else(|| anyhow::anyhow!("Missing 'episodes' argument"))?;
-                let playlist_name = args["playlist_name"].as_str()
+                let playlist_name = args["playlist_name"]
+                    .as_str()
                     .ok_or_else(|| anyhow::anyhow!("Missing 'playlist_name' argument"))?;
                 self.create_vlc_playlist(episodes, playlist_name).await?
             }
@@ -394,35 +439,32 @@ Use the episode data provided in the input to create the playlist entries. Extra
     /// Create VLC playlist and launch VLC
     async fn create_vlc_playlist(&self, episodes: &[Value], playlist_name: &str) -> Result<String> {
         println!("🎵 Creating VLC playlist: {}", playlist_name);
-        
+
         // Generate timestamp for unique filename
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
         let filename = format!("{}_{}.m3u", playlist_name, timestamp);
-        
+
         // Create M3U playlist content
         let mut playlist_content = String::from("#EXTM3U\n");
-        
-        for (index, episode) in episodes.iter().enumerate() {
-            if let (Some(title), Some(url)) = (
-                episode["title"].as_str(),
-                episode["url"].as_str()
-            ) {
+
+        for episode in episodes.iter() {
+            if let (Some(title), Some(url)) = (episode["title"].as_str(), episode["url"].as_str()) {
                 // Clean and truncate description for M3U format (single line only)
                 let description = episode["description"].as_str().unwrap_or("");
                 let clean_desc = self.clean_description(description);
-                
+
                 // Create proper M3U entry with clean title and description
                 let display_title = if !clean_desc.is_empty() {
                     format!("{} - {}", title, clean_desc)
                 } else {
                     title.to_string()
                 };
-                
+
                 playlist_content.push_str(&format!("#EXTINF:-1,{}\n", display_title));
                 playlist_content.push_str(&format!("{}\n", url));
             }
         }
-        
+
         // Write playlist to file
         match File::create(&filename) {
             Ok(mut file) => {
@@ -435,30 +477,31 @@ Use the episode data provided in the input to create the playlist entries. Extra
                 return Err(anyhow::anyhow!("Failed to create playlist file: {}", e));
             }
         }
-        
+
         // Try to launch VLC with the playlist
         self.launch_vlc(&filename)?;
-        
-        Ok(format!("VLC playlist '{}' created with {} episodes and VLC launched successfully!", filename, episodes.len()))
+
+        Ok(format!(
+            "VLC playlist '{}' created with {} episodes and VLC launched successfully!",
+            filename,
+            episodes.len()
+        ))
     }
-    
+
     /// Launch VLC with the playlist
     fn launch_vlc(&self, playlist_path: &str) -> Result<()> {
         println!("🚀 Launching VLC with playlist...");
-        
+
         // Try different VLC executable names/paths
         let vlc_commands = vec![
             "vlc",
-            "vlc.exe", 
+            "vlc.exe",
             "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe",
             "C:\\Program Files (x86)\\VideoLAN\\VLC\\vlc.exe",
         ];
-        
+
         for vlc_cmd in &vlc_commands {
-            match Command::new(vlc_cmd)
-                .arg(playlist_path)
-                .spawn() 
-            {
+            match Command::new(vlc_cmd).arg(playlist_path).spawn() {
                 Ok(_) => {
                     println!("✅ VLC launched successfully with {}", vlc_cmd);
                     return Ok(());
@@ -466,30 +509,156 @@ Use the episode data provided in the input to create the playlist entries. Extra
                 Err(_) => continue,
             }
         }
-        
+
         // If VLC launch failed, provide helpful message
         println!("⚠️  Could not auto-launch VLC. You can manually open the playlist:");
         println!("   📁 File: {}", playlist_path);
         println!("   💡 Tip: Add VLC to your PATH or install it to default location");
-        
+
         Ok(())
     }
-    
+
     /// Clean description text for M3U format
     fn clean_description(&self, description: &str) -> String {
         // Remove line breaks, extra whitespace, and truncate to reasonable length
         let cleaned = description
-            .replace('\n', " ")
-            .replace('\r', " ")
+            .replace(['\n', '\r'], " ")
             .split_whitespace()
             .collect::<Vec<&str>>()
             .join(" ");
-        
+
         // Truncate to 100 characters for readability
         if cleaned.len() > 100 {
             format!("{}...", &cleaned[..97])
         } else {
             cleaned
+        }
+    }
+
+    /// Handle API errors with helpful messages and browser opening
+    fn handle_api_error(error: &anyhow::Error) {
+        let error_msg = error.to_string().to_lowercase();
+
+        if error_msg.contains("401")
+            || error_msg.contains("unauthorized")
+            || error_msg.contains("api key")
+        {
+            Self::handle_api_key_error();
+        } else if error_msg.contains("429")
+            || error_msg.contains("quota")
+            || error_msg.contains("rate limit")
+        {
+            Self::handle_quota_error();
+        } else if error_msg.contains("403") || error_msg.contains("forbidden") {
+            Self::handle_permission_error();
+        }
+    }
+
+    /// Handle API key errors with helpful messages and browser opening
+    fn handle_api_key_error() {
+        println!("{}", "🔑 API Key Issue Detected!".yellow().bold());
+        println!();
+        println!("{}", "❌ There's a problem with your Google API key.".red());
+        println!();
+        println!("{}", "💡 To fix this:".cyan().bold());
+        println!(
+            "{}",
+            "   1. Visit: https://aistudio.google.com/app/u/5/apikey".cyan()
+        );
+        println!("{}", "   2. Generate a new API key if needed".cyan());
+        println!(
+            "{}",
+            "   3. Copy the key to your .env file as GOOGLE_API_KEY=your_key_here".cyan()
+        );
+        println!();
+        println!("{}", "🌐 Opening API key page in your browser...".green());
+
+        // Try to open the API key page in browser
+        let url = "https://aistudio.google.com/app/u/5/apikey";
+        if Self::open_browser(url).is_err() {
+            println!(
+                "{}",
+                "⚠️  Could not auto-open browser. Please visit the URL manually.".yellow()
+            );
+        }
+    }
+
+    /// Open URL in the default browser
+    fn open_browser(url: &str) -> Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            Command::new("cmd").args(["/C", "start", url]).spawn()?;
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            Command::new("open").arg(url).spawn()?;
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            Command::new("xdg-open").arg(url).spawn()?;
+        }
+
+        Ok(())
+    }
+
+    /// Handle quota/rate limit errors
+    fn handle_quota_error() {
+        println!("{}", "⏱️  API Quota/Rate Limit Exceeded!".yellow().bold());
+        println!();
+        println!("{}", "❌ You've exceeded the API quota limits.".red());
+        println!();
+        println!("{}", "💡 Solutions:".cyan().bold());
+        println!("{}", "   1. Wait a few minutes and try again".cyan());
+        println!(
+            "{}",
+            "   2. Check your quota limits at the API console".cyan()
+        );
+        println!(
+            "{}",
+            "   3. Consider upgrading to a paid plan for higher limits".cyan()
+        );
+        println!();
+        println!(
+            "{}",
+            "🌐 Opening Google AI Studio to check your usage...".green()
+        );
+
+        let url = "https://aistudio.google.com/app/u/5/apikey";
+        if Self::open_browser(url).is_err() {
+            println!(
+                "{}",
+                "⚠️  Could not auto-open browser. Please visit the URL manually.".yellow()
+            );
+        }
+    }
+
+    /// Handle permission errors
+    fn handle_permission_error() {
+        println!("{}", "🚫 API Permission Error!".red().bold());
+        println!();
+        println!(
+            "{}",
+            "❌ Your API key doesn't have the required permissions.".red()
+        );
+        println!();
+        println!("{}", "💡 To fix this:".cyan().bold());
+        println!(
+            "{}",
+            "   1. Visit: https://aistudio.google.com/app/u/5/apikey".cyan()
+        );
+        println!("{}", "   2. Check your API key permissions".cyan());
+        println!("{}", "   3. Regenerate a new key if needed".cyan());
+        println!();
+        println!("{}", "🌐 Opening API key page...".green());
+
+        let url = "https://aistudio.google.com/app/u/5/apikey";
+        if Self::open_browser(url).is_err() {
+            println!(
+                "{}",
+                "⚠️  Could not auto-open browser. Please visit the URL manually.".yellow()
+            );
         }
     }
 }
