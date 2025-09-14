@@ -161,6 +161,11 @@ async fn main() -> Result<()> {
 }
 
 async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> {
+    // Multi-search mode: perform separate searches for each query term
+    if params.query_terms.len() > 1 {
+        return multi_search_content(client, params).await;
+    }
+    
     let query_string = params.query_terms.join(" ");
 
     // Preprocess query to extract duration selectors and search terms
@@ -308,6 +313,204 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
             }
             _ => {
                 print_table(&filtered_results, &result.query_info);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn multi_search_content(client: &Mediathek, params: SearchParams) -> Result<()> {
+    use std::collections::HashSet;
+    
+    if params.verbose {
+        println!("{}", "=== Multi-Search Mode ===".bright_yellow().bold());
+        println!("{}: {}", "Search terms".bold(), params.query_terms.join(", ").green());
+        println!("{}: {}", "Total searches".bold(), params.query_terms.len().to_string().cyan());
+        println!("{}", "========================".bright_yellow().bold());
+    }
+
+    let mut all_results = Vec::new();
+    let mut seen_urls = HashSet::new(); // For deduplication
+
+    // Perform separate search for each query term
+    for (index, query_term) in params.query_terms.iter().enumerate() {
+        if params.verbose {
+            println!("{}: {} ({}/{})", 
+                "Searching".bright_blue().bold(), 
+                query_term.cyan(),
+                (index + 1).to_string().yellow(),
+                params.query_terms.len().to_string().yellow());
+        }
+
+        // Create params for individual search
+        let individual_params = SearchParams {
+            query_terms: vec![query_term.clone()],
+            exclude_patterns: params.exclude_patterns.clone(),
+            include_patterns: params.include_patterns.clone(),
+            size: params.size,
+            offset: params.offset,
+            sort_by: params.sort_by.clone(),
+            sort_order: params.sort_order.clone(),
+            exclude_future: params.exclude_future,
+            format: params.format.clone(),
+            vlc: params.vlc.clone(),
+            vlc_ai: params.vlc_ai,
+            xspf_file: params.xspf_file,
+            count: params.count,
+            verbose: false, // Suppress individual search verbosity
+        };
+
+        // Perform individual search
+        let query_string = query_term.clone();
+        let (search_terms_only, duration_filters) = extract_duration_selectors(&query_string);
+
+        let mut query_builder = if search_terms_only.is_empty() {
+            client.query_string("", false)
+        } else {
+            client.query_string(&search_terms_only, false)
+        };
+
+        // Apply duration filters
+        for filter in duration_filters {
+            if let Some(duration_str) = filter.strip_prefix('>') {
+                if let Ok(min_duration) = duration_str.parse::<u64>() {
+                    query_builder = query_builder.duration_min(std::time::Duration::from_secs(min_duration * 60));
+                }
+            } else if let Some(duration_str) = filter.strip_prefix('<') {
+                if let Ok(max_duration) = duration_str.parse::<u64>() {
+                    query_builder = query_builder.duration_max(std::time::Duration::from_secs(max_duration * 60));
+                }
+            }
+        }
+
+        // Apply other parameters
+        query_builder = query_builder
+            .include_future(!individual_params.exclude_future)
+            .size(individual_params.size as usize)
+            .offset(individual_params.offset as usize);
+
+        // Apply sorting
+        let sort_field = match individual_params.sort_by.as_str() {
+            "duration" => SortField::Duration,
+            "channel" => SortField::Channel,
+            _ => SortField::Timestamp,
+        };
+
+        let sort_direction = match individual_params.sort_order.as_str() {
+            "asc" => SortOrder::Ascending,
+            _ => SortOrder::Descending,
+        };
+
+        query_builder = query_builder.sort_by(sort_field).sort_order(sort_direction);
+
+        // Execute the query
+        let result = query_builder.send().await?;
+        
+        if params.verbose {
+            println!("{}: {} results", "Found".green(), result.results.len().to_string().cyan());
+        }
+
+        // Add results with deduplication based on URL
+        for item in result.results {
+            if seen_urls.insert(item.url_video.clone()) {
+                all_results.push(item);
+            }
+        }
+    }
+
+    if params.verbose {
+        println!("{}", "=== Multi-Search Results ===".bright_yellow().bold());
+        println!("{}: {}", "Total unique results".bold(), all_results.len().to_string().green());
+        println!("{}", "===========================".bright_yellow().bold());
+    }
+
+    // Sort unified results according to specified sort parameters
+    all_results.sort_by(|a, b| {
+        match params.sort_by.as_str() {
+            "duration" => {
+                let duration_a = a.duration.map(|d| d.as_secs()).unwrap_or(0);
+                let duration_b = b.duration.map(|d| d.as_secs()).unwrap_or(0);
+                match params.sort_order.as_str() {
+                    "asc" => duration_a.cmp(&duration_b),
+                    _ => duration_b.cmp(&duration_a),
+                }
+            },
+            "channel" => {
+                match params.sort_order.as_str() {
+                    "asc" => a.channel.cmp(&b.channel),
+                    _ => b.channel.cmp(&a.channel),
+                }
+            },
+            _ => { // timestamp (default)
+                match params.sort_order.as_str() {
+                    "asc" => a.timestamp.cmp(&b.timestamp),
+                    _ => b.timestamp.cmp(&a.timestamp),
+                }
+            }
+        }
+    });
+
+    // Apply client-side regex filters to unified results
+    let filtered_results = apply_regex_filters(
+        all_results,
+        params.exclude_patterns,
+        params.include_patterns,
+    )?;
+
+    if params.verbose {
+        println!("{}: {}", "After regex filtering".bold(), filtered_results.len().to_string().green());
+    }
+
+    // Output results using the same logic as single search
+    if params.count {
+        println!("{}", filtered_results.len());
+    } else if params.vlc_ai {
+        process_with_ai(&filtered_results).await?;
+    } else if let Some(quality) = params.vlc {
+        let validated_quality = match quality.as_str() {
+            "l" | "low" => "l",
+            "h" | "hd" | "high" => "h",
+            "m" | "medium" | "" => "m",
+            _ => {
+                println!("{}", format!("Warning: Invalid quality '{quality}'. Using medium quality (m). Valid options: l (low), m (medium), h (HD)").yellow());
+                "m"
+            }
+        };
+        create_vlc_playlist_and_launch(&filtered_results, &params.query_terms, validated_quality)?;
+    } else {
+        match params.format.as_str() {
+            "json" => {
+                println!("{}", serde_json::to_string_pretty(&filtered_results)?);
+            }
+            "csv" => {
+                print_csv(&filtered_results);
+            }
+            "xspf" => {
+                if params.xspf_file {
+                    save_xspf_playlist(&filtered_results, &params.query_terms)?;
+                } else {
+                    print_xspf(&filtered_results, &params.query_terms.join(" "));
+                }
+            }
+            "oneline" => {
+                print_oneline(&filtered_results);
+            }
+            "onelinetheme" => {
+                print_oneline_theme(&filtered_results);
+            }
+            "theme-count" => {
+                print_theme_count_table(&filtered_results);
+            }
+            _ => {
+                // Create a mock QueryInfo for table display
+                let query_info = mediathekviewweb::models::QueryInfo {
+                    filmliste_timestamp: 0,
+                    result_count: filtered_results.len(),
+                    search_engine_time: std::time::Duration::from_millis(0),
+                    total_results: filtered_results.len() as u64,
+                };
+                print_table(&filtered_results, &query_info);
             }
         }
     }

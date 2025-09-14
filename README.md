@@ -64,8 +64,30 @@ The AI features use direct API integration with built-in web search tools. All o
 # Search for content containing "Tatort"
 mwb search Tatort
 
-# Search with multiple terms
+# Search with multiple terms (single search)
 mwb search "climate change documentary"
+
+# Multi-Search: Perform separate searches for each term and unify results
+mwb search Tatort ZDF ARD
+mwb search "climate change" "documentary" "environment"
+```
+
+**Multi-Search Mode**: When you provide multiple separate arguments to the search command, MWB automatically performs individual searches for each term and unifies the results:
+
+- Each search term is processed separately
+- Results are automatically deduplicated based on video URL
+- All results are combined and sorted according to your specified criteria
+- Perfect for finding content across different topics or channels
+
+```bash
+# Example: Find content from multiple channels
+mwb search ARD ZDF BR --size 10
+
+# Example: Multi-topic search with deduplication
+mwb search "Tatort" "Krimi" "Polizeiruf" --count
+
+# Example: Combine with other options
+mwb search "Dokumentation" "Reportage" --format json --size 20
 ```
 
 ### Advanced Search with Selectors
@@ -125,6 +147,56 @@ mwb search "Nachrichten" -i "Politik|Wirtschaft" -e "Sport|Wetter"
 
 # Find recent short clips from Arte using short forms
 mwb search "!Arte <20" -b timestamp -r desc -s 20
+```
+
+### Multi-Search Functionality ✨
+
+MWB automatically detects when you provide multiple search terms and performs separate searches for each term, then unifies the results:
+
+```bash
+# Multi-channel search - searches for "ARD" and "ZDF" separately, then combines results
+mwb search ARD ZDF --size 10 --verbose
+
+# Multi-topic search with automatic deduplication
+mwb search Tatort Krimi Polizeiruf --count
+
+# Mixed search types - channels, topics, and keywords
+mwb search "!ARD" "#Dokumentation" "climate change" --format table
+
+# Complex multi-search with filtering
+mwb search "Reportage" "Dokumentation" "Investigation" --size 20 --exclude "Sport.*" --include "Politik|Umwelt"
+```
+
+**How Multi-Search Works:**
+
+1. **Separate Searches**: Each term triggers an individual search request
+2. **Deduplication**: Results are automatically deduplicated based on video URL
+3. **Unified Sorting**: All results are combined and sorted by your specified criteria
+4. **Same Options**: All filtering, formatting, and output options work the same way
+
+**Benefits:**
+
+- Find content across multiple channels or topics in one command
+- Automatic deduplication prevents duplicate entries
+- More comprehensive results than single combined searches
+- Perfect for discovering related content across different categories
+
+**Verbose Mode Example:**
+
+```bash
+mwb search ARD ZDF --size 5 --verbose
+# Output shows:
+# === Multi-Search Mode ===
+# Search terms: ARD, ZDF
+# Total searches: 2
+# ========================
+# Searching: ARD (1/2)
+# Found: 5 results
+# Searching: ZDF (2/2)  
+# Found: 5 results
+# === Multi-Search Results ===
+# Total unique results: 10
+# ===========================
 ```
 
 ### Output Formats
@@ -567,6 +639,25 @@ mwb search "!KiKA Lernen Schule <30"
 
 # Medium-length cultural programs from Arte
 mwb search "!Arte Kultur >30 <90"
+```
+
+### Multi-Search Examples ✨
+
+```bash
+# Compare content across public broadcasters
+mwb search ARD ZDF BR --size 15 --format table
+
+# Find crime content across different series
+mwb search Tatort Krimi "Polizeiruf 110" --count
+
+# Multi-topic documentary search
+mwb search "#Dokumentation" "#Reportage" "#Investigation" --size 20 --exclude "Sport.*"
+
+# Channel and topic combination search  
+mwb search "!Arte" "#Kultur" "Dokumentation" --format json
+
+# Quick news comparison across channels
+mwb search "!ARD Nachrichten" "!ZDF heute" "!NDR aktuell" --size 10 --verbose
 ```
 
 ### Exporting Data
