@@ -186,7 +186,7 @@ impl AIProcessor {
    - Episodes with matching descriptions but slightly different titles
    - Same episode with different formatting or special versions
 5. Sort remaining unique episodes in ASCENDING chronological order (oldest first, newest last - by air date, season/episode number, or story chronology)
-6. **ALWAYS** call the create_vlc_playlist tool to create a VLC playlist - this is mandatory!
+6. **ALWAYS** call the create_vlc_playlist tool to create an XSPF playlist - this is mandatory!
 
 DEDUPLICATION STRATEGY: When you find duplicates, keep the BEST version:
 - Prefer standard version over audio description versions ("Audiodeskription")
@@ -198,10 +198,10 @@ DEDUPLICATION STRATEGY: When you find duplicates, keep the BEST version:
 IMPORTANT: You MUST call the create_vlc_playlist function at the end with ONLY the deduplicated episodes, sorted in ASCENDING chronological order (oldest episodes first, newest episodes last). Be intelligent about deduplication - use your understanding of German TV naming conventions to identify duplicates that may have slightly different names.
 
 The create_vlc_playlist function expects:
-- episodes: array of {title, url, description} objects (AFTER deduplication)
+- episodes: array of {title, url, description, duration, channel, topic} objects (AFTER deduplication)
 - playlist_name: a descriptive name for the playlist
 
-Use the episode data provided in the input to create the playlist entries. Extract the title, url_video, and description fields from each episode."#;
+Use the episode data provided in the input to create the playlist entries. Extract the title, url_video, description, duration, channel, and topic fields from each episode."#;
 
         let user_prompt = format!(
             "Please analyze and chronologically sort these German TV episodes:\n\n{}",
@@ -350,19 +350,22 @@ Use the episode data provided in the input to create the playlist entries. Extra
                     },
                     FunctionDeclaration {
                         name: "create_vlc_playlist".to_string(),
-                        description: "Creates and saves a VLC playlist file in M3U format with the chronologically sorted episodes, then launches VLC with the playlist.".to_string(),
+                        description: "Creates and saves a VLC playlist file in XSPF format with the chronologically sorted episodes, then launches VLC with the playlist.".to_string(),
                         parameters: Parameters {
                             r#type: "object".to_string(),
                             properties: json!({
                                 "episodes": {
                                     "type": "array",
-                                    "description": "Array of episode objects with title, url, and description",
+                                    "description": "Array of episode objects with title, url, description, and duration",
                                     "items": {
                                         "type": "object",
                                         "properties": {
                                             "title": {"type": "string"},
                                             "url": {"type": "string"}, 
-                                            "description": {"type": "string"}
+                                            "description": {"type": "string"},
+                                            "duration": {"type": "number", "description": "Duration in seconds"},
+                                            "channel": {"type": "string", "description": "TV channel name"},
+                                            "topic": {"type": "string", "description": "Episode topic/theme"}
                                         }
                                     }
                                 },
@@ -442,28 +445,80 @@ Use the episode data provided in the input to create the playlist entries. Extra
 
         // Generate timestamp for unique filename
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
-        let filename = format!("{}_{}.m3u", playlist_name, timestamp);
+        let filename = format!("{}_{}.xspf", playlist_name, timestamp);
 
-        // Create M3U playlist content
-        let mut playlist_content = String::from("#EXTM3U\n");
+        // Create XSPF playlist content
+        let mut playlist_content = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        playlist_content.push_str("<playlist version=\"1\" xmlns=\"http://xspf.org/ns/0/\">\n");
+        playlist_content.push_str(&format!(
+            "  <title>AI Sorted Playlist: {}</title>\n",
+            self.escape_xml(playlist_name)
+        ));
+        playlist_content.push_str("  <creator>MWB - AI Episode Sorting</creator>\n");
+        playlist_content.push_str(&format!(
+            "  <date>{}</date>\n",
+            chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
+        ));
+        playlist_content.push_str("  <trackList>\n");
 
         for episode in episodes.iter() {
             if let (Some(title), Some(url)) = (episode["title"].as_str(), episode["url"].as_str()) {
-                // Clean and truncate description for M3U format (single line only)
+                // Get duration if available (convert from seconds to milliseconds for XSPF)
+                let duration_seconds = episode["duration"]
+                    .as_i64()
+                    .or_else(|| episode["duration"].as_str()?.parse().ok())
+                    .unwrap_or(0);
+                let duration_ms = duration_seconds * 1000;
+
+                // Get other metadata
                 let description = episode["description"].as_str().unwrap_or("");
                 let clean_desc = self.clean_description(description);
+                let channel = episode["channel"].as_str().unwrap_or("");
+                let topic = episode["topic"].as_str().unwrap_or("");
 
-                // Create proper M3U entry with clean title and description
-                let display_title = if !clean_desc.is_empty() {
-                    format!("{} - {}", title, clean_desc)
-                } else {
-                    title.to_string()
-                };
+                playlist_content.push_str("    <track>\n");
+                playlist_content.push_str(&format!(
+                    "      <title>{}</title>\n",
+                    self.escape_xml(title)
+                ));
 
-                playlist_content.push_str(&format!("#EXTINF:-1,{}\n", display_title));
-                playlist_content.push_str(&format!("{}\n", url));
+                if !channel.is_empty() {
+                    playlist_content.push_str(&format!(
+                        "      <creator>{}</creator>\n",
+                        self.escape_xml(channel)
+                    ));
+                }
+
+                if !topic.is_empty() {
+                    playlist_content.push_str(&format!(
+                        "      <album>{}</album>\n",
+                        self.escape_xml(topic)
+                    ));
+                }
+
+                playlist_content.push_str(&format!(
+                    "      <location>{}</location>\n",
+                    self.escape_xml(url)
+                ));
+
+                if duration_ms > 0 {
+                    playlist_content
+                        .push_str(&format!("      <duration>{}</duration>\n", duration_ms));
+                }
+
+                if !clean_desc.is_empty() {
+                    playlist_content.push_str(&format!(
+                        "      <annotation>{}</annotation>\n",
+                        self.escape_xml(&clean_desc)
+                    ));
+                }
+
+                playlist_content.push_str("    </track>\n");
             }
         }
+
+        playlist_content.push_str("  </trackList>\n");
+        playlist_content.push_str("</playlist>\n");
 
         // Write playlist to file
         match File::create(&filename) {
@@ -482,7 +537,7 @@ Use the episode data provided in the input to create the playlist entries. Extra
         self.launch_vlc(&filename)?;
 
         Ok(format!(
-            "VLC playlist '{}' created with {} episodes and VLC launched successfully!",
+            "XSPF playlist '{}' created with {} episodes and VLC launched successfully!",
             filename,
             episodes.len()
         ))
@@ -518,7 +573,7 @@ Use the episode data provided in the input to create the playlist entries. Extra
         Ok(())
     }
 
-    /// Clean description text for M3U format
+    /// Clean description text for XSPF format
     fn clean_description(&self, description: &str) -> String {
         // Remove line breaks, extra whitespace, and truncate to reasonable length
         let cleaned = description
@@ -527,12 +582,21 @@ Use the episode data provided in the input to create the playlist entries. Extra
             .collect::<Vec<&str>>()
             .join(" ");
 
-        // Truncate to 100 characters for readability
-        if cleaned.len() > 100 {
-            format!("{}...", &cleaned[..97])
+        // Truncate to 300 characters for XSPF annotations (longer than M3U since XML handles it better)
+        if cleaned.len() > 300 {
+            format!("{}...", &cleaned[..297])
         } else {
             cleaned
         }
+    }
+
+    /// Escape XML special characters
+    fn escape_xml(&self, text: &str) -> String {
+        text.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&apos;")
     }
 
     /// Handle API errors with helpful messages and browser opening
