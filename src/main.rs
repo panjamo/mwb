@@ -501,26 +501,26 @@ fn process_with_ai(results: &[mediathekviewweb::models::Item]) -> Result<()> {
     let json_output = serde_json::to_string_pretty(results)?;
 
     // Define the AI prompt
-    let ai_prompt = "Sortiere die Episoden chronologisch, am besten nach dem Wikipediaeintrag. Lösche doppelte Episoden. Erstelle eine VLC Playlist und schreibe sie in eine Datei. Starte vlc mit der Playlist.";
+    let ai_prompt = "Sortiere die Episoden chronologisch, am besten nach dem Wikipediaeintrag oder fernsehserien.de oder TVButler. Lösche doppelte Episoden. Erstelle eine VLC Playlist und schreibe sie in eine Datei. Starte vlc mit der Playlist. Zeige den Fortschritt für besseren User Interface. Speichere die Playliat auf jeden Fall ohne Nachfrage. Stelle keine Nachfragen.";
 
     // Execute the Gemini command (try both gemini and gemini.cmd for Windows compatibility)
     let mut cmd = match Command::new("gemini")
         .arg("-y")
-        .arg("-p")
+        .arg("--prompt-interactive")
         .arg(ai_prompt)
         .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
         .spawn()
         .or_else(|_| {
             // Try gemini.cmd for Windows
             Command::new("gemini.cmd")
                 .arg("-y")
-                .arg("-p")
+                .arg("--prompt-interactive")
                 .arg(ai_prompt)
                 .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::inherit())
                 .spawn()
         })
     {
@@ -544,27 +544,13 @@ fn process_with_ai(results: &[mediathekviewweb::models::Item]) -> Result<()> {
         drop(stdin); // Close stdin so gemini knows input is complete
     }
 
-    // Wait for the command to complete and capture output
-    let output = cmd.wait_with_output()?;
+    // Wait for the command to complete (output streams directly to console)
+    let status = cmd.wait()?;
 
-    if output.status.success() {
-        println!("{}", "AI processing completed successfully!".green());
-        // Print stdout from gemini (if any)
-        if !output.stdout.is_empty() {
-            println!("{}", String::from_utf8_lossy(&output.stdout));
-        }
+    if status.success() {
+        println!("\n{}", "AI processing completed successfully!".green());
     } else {
-        println!("{}", format!("AI processing failed with exit code: {:?}", output.status.code()).red());
-        // Print stderr from gemini (if any)
-        if !output.stderr.is_empty() {
-            println!("{}", "Gemini error output:".yellow());
-            println!("{}", String::from_utf8_lossy(&output.stderr));
-        }
-        // Print stdout from gemini (if any) in case of error
-        if !output.stdout.is_empty() {
-            println!("{}", "Gemini stdout:".yellow());
-            println!("{}", String::from_utf8_lossy(&output.stdout));
-        }
+        println!("\n{}", format!("AI processing failed with exit code: {:?}", status.code()).red());
         println!("{}", "You can try running the command manually:".yellow());
         println!("echo '{}' | gemini -y -p \"{}\"", json_output, ai_prompt);
     }

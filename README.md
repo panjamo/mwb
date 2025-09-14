@@ -7,6 +7,7 @@ Built using the official [mediathekviewweb](https://crates.io/crates/mediathekvi
 ## Features
 
 - **Fast Search**: Search through thousands of German TV shows, documentaries, and news content
+- **AI-Powered Playlists** ✨: Use Gemini AI for intelligent chronological sorting, deduplication, and smart VLC playlist creation
 - **Advanced Filtering**: Use MediathekView's powerful search syntax with selectors
 - **Duration Selectors**: Filter content by duration directly in the query (e.g., `>90` for content longer than 90 minutes)
 - **Exclusion Filter**: Filter out unwanted content using regex patterns
@@ -27,6 +28,30 @@ cargo build --release
 ```
 
 The binary will be available at `target/release/mwb` (or `target/release/mwb.exe` on Windows).
+
+### AI Feature Setup (Optional)
+
+To use the `--vlc-ai` feature, you'll need to install the Gemini CLI:
+
+```bash
+# Install Gemini CLI via npm (requires Node.js)
+npm install -g @google/generative-ai-cli
+
+# Verify installation
+gemini --version
+
+# Set up your API key (required for AI features)
+# Follow the prompts to authenticate with Google AI Studio
+gemini auth
+```
+
+**AI Feature Requirements:**
+- Node.js and npm installed
+- Google AI Studio API key (free tier available)
+- Active internet connection for AI processing
+- VLC media player for playlist playback
+
+The AI features are completely optional - all other functionality works without them.
 
 ## Usage
 
@@ -292,7 +317,7 @@ Playlist files are named based on your search query for easy identification:
 - Long queries are truncated to 50 characters
 - 4-digit timestamp suffix prevents filename conflicts
 
-### AI-Powered VLC Integration
+### AI-Powered VLC Integration ✨
 
 The `--vlc-ai` option leverages artificial intelligence to enhance your media experience by automatically processing search results through Gemini AI for intelligent sorting, deduplication, and playlist creation.
 
@@ -307,16 +332,34 @@ mwb search "Tatort" --vlc-ai
 mwb search "documentary climate" -s 50 --vlc-ai
 ```
 
+**Example Output:**
+```bash
+C:\Users\user> mwb search "Ostfriesenkrimis >85" -e Audio --vlc-ai
+Processing results with AI (Gemini)...
+Loaded cached credentials.
+Okay, I will process the video list, create a playlist, and start VLC.
+Processing episodes and sorting them chronologically.
+Writing playlist to 'playlist.m3u'.
+Playlist created. Starting VLC.
+Done.
+
+AI processing completed successfully!
+```
+
 The `--vlc-ai` feature:
 - **Intelligent Processing**: Sends search results to Gemini AI for analysis
 - **Chronological Sorting**: AI sorts episodes by air date using Wikipedia and other sources
-- **Duplicate Removal**: Automatically detects and removes duplicate episodes
-- **Smart Playlist Creation**: Creates VLC playlists optimized for binge-watching
-- **Auto-Launch**: Starts VLC with the processed playlist
+- **Duplicate Removal**: Automatically detects and removes duplicate episodes  
+- **Smart Playlist Creation**: Creates VLC playlists (M3U format) optimized for binge-watching
+- **Auto-Launch**: Attempts to start VLC with the processed playlist
+- **Real-time Feedback**: Streams AI processing output directly to console for live progress updates
 - **JSON Pipeline**: Converts results to JSON and pipes to `gemini -y -p "<prompt>"`
+- **Windows Compatible**: Automatically handles Windows npm command extensions
 
 **Requirements**:
 - `gemini` command must be installed and available in PATH
+  - Install with: `npm install -g @google/generative-ai-cli`
+  - Windows: Both `gemini` and `gemini.cmd` are supported automatically
 - Active internet connection for AI processing
 - VLC media player installed for playlist playback
 
@@ -324,9 +367,14 @@ The `--vlc-ai` feature:
 1. Searches and filters results using mwb's powerful query syntax
 2. Converts results to JSON format
 3. Sends to Gemini AI with German prompt for chronological sorting and deduplication
-4. AI creates VLC playlist file and launches VLC automatically
+4. AI creates VLC playlist file and attempts to launch VLC automatically
+5. Falls back gracefully if VLC is not in PATH (manual playlist opening)
 
 **AI Prompt**: "Sortiere die Episoden chronologisch, am besten nach dem Wikipediaeintrag. Lösche doppelte episoden. Create a vlc playlist to disk. Starte vlc mit der Playlist."
+
+**Platform Support**:
+- **Windows**: Full support with automatic `.cmd` extension handling
+- **Linux/macOS**: Full support with native command execution
 
 If the `gemini` command is not available, the tool will provide the manual command for you to execute.
 
@@ -611,7 +659,7 @@ mwb search "krimi investigation >70" -s 30 -e "audio|kurz|short" -v
 mwb search "!Arte !3Sat >60" -s 25 -i "deutsch|german|english" -v
 ```
 
-### AI-Powered Smart Playlists
+### AI-Powered Smart Playlists ✨
 ```bash
 # Let AI sort Ostfriesenkrimis chronologically and create optimized VLC playlist
 # AI removes duplicates and sorts by episode order from Wikipedia
@@ -625,7 +673,18 @@ mwb search "dokumentation climate change >30" -s 50 --vlc-ai
 
 # Crime series with AI chronological ordering - perfect for binge watching
 mwb search "krimi investigation >60" -e "audio|trailer" --vlc-ai
+
+# Educational content with AI-powered organization
+mwb search "wissenschaft >30" -s 25 --vlc-ai
 ```
+
+**AI Benefits over Regular VLC Integration:**
+- **Chronological Order**: Episodes sorted by actual air date, not just broadcast timestamp
+- **Duplicate Detection**: Removes repeat broadcasts and identical content
+- **Series Recognition**: Groups and orders episodes from the same series correctly
+- **Real-time Progress**: Live streaming of AI processing steps and progress updates
+- **Manual Fallback**: Provides exact command if Gemini is unavailable
+- **Smart Filtering**: AI can identify and exclude trailers, previews, and audio descriptions
 
 ### Curated Content Collections
 ```bash
@@ -665,13 +724,15 @@ mwb search "natur umwelt tiere >30" -s 25 -i "wild|forest|ocean" -v
 
 8. **Short Forms**: All options have short forms for faster typing: `-s` (size), `-o` (offset), `-b` (sort-by), `-r` (sort-order), `-f` (format), `-e` (exclude), `-i` (include).
 
-9. **Smart Query Processing**: You can mix search terms with duration selectors naturally:
+9. **AI-Powered Organization**: Use `--vlc-ai` for series and episodic content to get chronologically ordered, duplicate-free playlists optimized for binge-watching. Especially useful for crime series like Tatort or documentary series.
+
+10. **Smart Query Processing**: You can mix search terms with duration selectors naturally:
    - `"tatort >85"` searches all fields (title, topic, description, channel) with duration filtering
    - `"climate change documentary >60"` finds content containing all terms across all fields
    - Provides comprehensive results without being limited to specific fields
    - No need to remember selector syntax for simple searches
 
-10. **VLC Playlist Features**: 
+11. **VLC Playlist Features**:
     - Quality selection: `-v` (medium), `-v=l` (low), `-v=m` (medium), `-v=h` (HD)
     - Filenames generated from search query (e.g., `mwb_tatort_m85_1234.xspf`)  
     - Include broadcast dates in YYYY-MM-DD format for chronological identification
