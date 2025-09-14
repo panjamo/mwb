@@ -505,8 +505,8 @@ fn process_with_ai(results: &[mediathekviewweb::models::Item]) -> Result<()> {
 
     // Execute the Gemini command (try both gemini and gemini.cmd for Windows compatibility)
     let mut cmd = match Command::new("gemini")
-        .arg("-y")
-        .arg("--prompt-interactive")
+        .arg("--yolo")
+        .arg("--prompt")
         .arg(ai_prompt)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::inherit())
@@ -515,8 +515,8 @@ fn process_with_ai(results: &[mediathekviewweb::models::Item]) -> Result<()> {
         .or_else(|_| {
             // Try gemini.cmd for Windows
             Command::new("gemini.cmd")
-                .arg("-y")
-                .arg("--prompt-interactive")
+                .arg("--yolo")
+                .arg("--prompt")
                 .arg(ai_prompt)
                 .stdin(std::process::Stdio::piped())
                 .stdout(std::process::Stdio::inherit())
