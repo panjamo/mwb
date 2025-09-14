@@ -12,3 +12,24 @@ anyhow = "1.0"
 colored = "2.0"
 chrono = { version = "0.4", features = ["serde"] }
 regex = "1.0"
+
+# For accessing the Gemini API via HTTP
+# Using direct HTTP requests instead of a crate
+
+# For making HTTP requests (for search API and web scraping)
+reqwest = { version = "0.12", features = ["json"] }
+
+# For parsing HTML from websites
+scraper = "0.19.0"
+
+# For handling serialization
+serde = { version = "1.0", features = ["derive"] }
+
+# For environment variables (to store API keys securely)
+dotenvy = "0.15"
+
+# For URL handling
+url = "2.4"
+
+# For URL encoding
+urlencoding = "2.1"

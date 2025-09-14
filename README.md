@@ -31,27 +31,30 @@ The binary will be available at `target/release/mwb` (or `target/release/mwb.exe
 
 ### AI Feature Setup (Optional)
 
-To use the `--vlc-ai` feature, you'll need to install the Gemini CLI:
+To use the `--vlc-ai` feature for intelligent episode sorting and analysis:
 
 ```bash
-# Install Gemini CLI via npm (requires Node.js)
-npm install -g @google/generative-ai-cli
+# 1. Get your Google AI Studio API key (free tier available)
+#    Visit: https://aistudio.google.com/app/apikey
 
-# Verify installation
-gemini --version
+# 2. Create a .env file in the project directory
+cp .env.example .env
 
-# Set up your API key (required for AI features)
-# Follow the prompts to authenticate with Google AI Studio
-gemini auth
+# 3. Edit .env file and add your API key
+# GOOGLE_API_KEY=your_api_key_here
 ```
 
 **AI Feature Requirements:**
-- Node.js and npm installed
-- Google AI Studio API key (free tier available)
-- Active internet connection for AI processing
-- VLC media player for playlist playback
+- Google AI Studio API key (free tier: 15 requests/minute)
+- Active internet connection for web research
+- No external CLI tools required (integrated directly)
 
-The AI features are completely optional - all other functionality works without them.
+**Setup Steps:**
+1. **Get API Key**: Visit [Google AI Studio](https://aistudio.google.com/app/apikey) and generate a free API key
+2. **Environment File**: Copy `.env.example` to `.env` and add your key
+3. **Ready to Go**: The `--vlc-ai` flag will now work with intelligent web research
+
+The AI features use direct API integration with built-in web search tools. All other functionality works without AI setup.
 
 ## Usage
 
@@ -317,66 +320,80 @@ Playlist files are named based on your search query for easy identification:
 - Long queries are truncated to 50 characters
 - 4-digit timestamp suffix prevents filename conflicts
 
-### AI-Powered VLC Integration ✨
+### AI-Powered Episode Sorting ✨
 
-The `--vlc-ai` option leverages artificial intelligence to enhance your media experience by automatically processing search results through Gemini AI for intelligent sorting, deduplication, and playlist creation.
+The `--vlc-ai` option uses Google's Gemini API with intelligent web search tools to automatically research, sort, and analyze TV episodes chronologically.
 
 ```bash
-# Process results with AI for chronological sorting and VLC playlist creation
+# Process results with AI for chronological sorting
 mwb search "Ostfriesenkrimis >85" -e Audio --vlc-ai
 
-# Works with any search query - AI will sort episodes chronologically 
+# Works with any search query - AI researches episode chronology
 mwb search "Tatort" --vlc-ai
 
-# AI processes JSON results and creates optimized VLC playlists
+# AI processes and analyzes complex series with web research
 mwb search "documentary climate" -s 50 --vlc-ai
 ```
 
 **Example Output:**
 ```bash
 C:\Users\user> mwb search "Ostfriesenkrimis >85" -e Audio --vlc-ai
-Processing results with AI (Gemini)...
-Loaded cached credentials.
-Okay, I will process the video list, create a playlist, and start VLC.
-Processing episodes and sorting them chronologically.
-Writing playlist to 'playlist.m3u'.
-Playlist created. Starting VLC.
-Done.
+🚀 Initializing Gemini AI processor...
+🤖 Processing 23 results with Gemini AI for chronological sorting...
+🔄 Iteration 1 - Sending request to Gemini...
+🔧 Gemini is calling tool: perform_google_search
+🔍 Searching for: 'Ostfriesenkrimis episodes chronological order Wikipedia'
+🔧 Gemini is calling tool: read_website_content
+📖 Reading content from: 'https://de.wikipedia.org/wiki/Ostfriesenkrimis'
+🔄 Iteration 3 - Sending request to Gemini...
+✅ Received final response from Gemini
 
-AI processing completed successfully!
+✅ AI Processing Results:
+==================================================
+# Ostfriesenkrimis - Chronologically Sorted Episodes
+
+## Series Overview
+Based on Klaus-Peter Wolf's novels, aired chronologically:
+
+1. **Ostfriesenfluch** (2017)
+   - Air Date: 2017-09-18
+   - Summary: Ann Kathrin Klaasen investigates her first case...
+
+[Detailed chronological listing continues...]
+==================================================
+
+📄 Results saved to: ai_sorted_episodes_20231201_143022.txt
 ```
 
-The `--vlc-ai` feature:
-- **Intelligent Processing**: Sends search results to Gemini AI for analysis
-- **Chronological Sorting**: AI sorts episodes by air date using Wikipedia and other sources
-- **Duplicate Removal**: Automatically detects and removes duplicate episodes  
-- **Smart Playlist Creation**: Creates VLC playlists (M3U format) optimized for binge-watching
-- **Auto-Launch**: Attempts to start VLC with the processed playlist
-- **Real-time Feedback**: Streams AI processing output directly to console for live progress updates
-- **JSON Pipeline**: Converts results to JSON and pipes to `gemini -y -p "<prompt>"`
-- **Windows Compatible**: Automatically handles Windows npm command extensions
+**Key Features**:
+- **Integrated Web Research**: Built-in tools search Wikipedia, fernsehserien.de, and other sources
+- **Chronological Analysis**: AI determines proper episode order using multiple sources
+- **German TV Expertise**: Optimized for German broadcasting content and episode guides
+- **Duplicate Detection**: Automatically identifies and removes duplicate episodes
+- **Detailed Summaries**: Provides episode descriptions and air dates when available
+- **Series Grouping**: Organizes episodes by series and seasons
+- **Source Attribution**: Cites research sources for transparency
+
+**Technical Implementation**:
+- **Direct API Integration**: Uses Gemini API directly (no external CLI required)
+- **Tool-Calling Architecture**: AI can dynamically search and read websites
+- **Intelligent Prompting**: Specialized prompts for German TV content analysis
+- **Robust Error Handling**: Graceful fallbacks if web sources are unavailable
+- **Progress Feedback**: Real-time updates on AI reasoning process
 
 **Requirements**:
-- `gemini` command must be installed and available in PATH
-  - Install with: `npm install -g @google/generative-ai-cli`
-  - Windows: Both `gemini` and `gemini.cmd` are supported automatically
-- Active internet connection for AI processing
-- VLC media player installed for playlist playback
+- Google AI Studio API key (free tier available)
+- Internet connection for web research
+- `.env` file with `GOOGLE_API_KEY` configured
 
-**How it works**:
-1. Searches and filters results using mwb's powerful query syntax
-2. Converts results to JSON format
-3. Sends to Gemini AI with German prompt for chronological sorting and deduplication
-4. AI creates VLC playlist file and attempts to launch VLC automatically
-5. Falls back gracefully if VLC is not in PATH (manual playlist opening)
+**Research Sources Used**:
+- Wikipedia (de.wikipedia.org)
+- Fernsehserien.de
+- IMDB episode guides
+- Official broadcaster websites
+- TVButler.de
 
-**AI Prompt**: "Sortiere die Episoden chronologisch, am besten nach dem Wikipediaeintrag. Lösche doppelte episoden. Create a vlc playlist to disk. Starte vlc mit der Playlist."
-
-**Platform Support**:
-- **Windows**: Full support with automatic `.cmd` extension handling
-- **Linux/macOS**: Full support with native command execution
-
-If the `gemini` command is not available, the tool will provide the manual command for you to execute.
+The AI conducts thorough research to ensure accurate chronological ordering, making it perfect for binge-watching series in the correct sequence.
 
 ### List Available Channels
 

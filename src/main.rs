@@ -13,6 +13,9 @@ use std::io::Write;
 
 use std::process::Command;
 
+mod ai;
+use ai::AIProcessor;
+
 #[derive(Parser)]
 #[command(name = "mwb")]
 #[command(about = "MediathekViewWeb CLI - Search German public broadcasting content")]
@@ -213,7 +216,7 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
     if params.count {
         println!("{}", filtered_results.len());
     } else if params.vlc_ai {
-        process_with_ai(&filtered_results)?;
+        process_with_ai(&filtered_results).await?;
     } else if let Some(quality) = params.vlc {
         // Validate quality parameter and set default if invalid
         let validated_quality = match quality.as_str() {
@@ -489,70 +492,49 @@ fn generate_vlc_playlist_filename(query: &str) -> String {
     format!("mwb_{truncated}_{timestamp}.xspf")
 }
 
-fn process_with_ai(results: &[mediathekviewweb::models::Item]) -> Result<()> {
+async fn process_with_ai(results: &[mediathekviewweb::models::Item]) -> Result<()> {
     if results.is_empty() {
         println!("{}", "No results found to process with AI.".yellow());
         return Ok(());
     }
 
-    println!("{}", "Processing results with AI (Gemini)...".yellow());
+    // Load environment variables from .env file if it exists
+    dotenvy::dotenv().ok();
 
-    // Convert results to JSON
-    let json_output = serde_json::to_string_pretty(results)?;
+    println!("{}", "🚀 Initializing Gemini AI processor...".yellow());
 
-    // Define the AI prompt
-    let ai_prompt = "Sortiere die Episoden chronologisch, am besten nach dem Wikipediaeintrag oder fernsehserien.de oder TVButler. Lösche doppelte Episoden. Erstelle eine VLC Playlist und schreibe sie in eine Datei. Starte vlc mit der Playlist. Zeige den Fortschritt für besseren User Interface. Speichere die Playliat auf jeden Fall ohne Nachfrage. Stelle keine Nachfragen.";
-
-    // Execute the Gemini command (try both gemini and gemini.cmd for Windows compatibility)
-    let mut cmd = match Command::new("gemini")
-        .arg("--yolo")
-        .arg("--prompt")
-        .arg(ai_prompt)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
-        .spawn()
-        .or_else(|_| {
-            // Try gemini.cmd for Windows
-            Command::new("gemini.cmd")
-                .arg("--yolo")
-                .arg("--prompt")
-                .arg(ai_prompt)
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::inherit())
-                .stderr(std::process::Stdio::inherit())
-                .spawn()
-        })
-    {
-        Ok(cmd) => cmd,
+    let processor = match AIProcessor::new().await {
+        Ok(processor) => processor,
         Err(e) => {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                println!("{}", "Error: 'gemini' command not found in PATH.".red());
-                println!("{}", "Please install the gemini CLI tool or run the command manually:".yellow());
-                println!("echo '{}' | gemini -y -p \"{}\"", json_output, ai_prompt);
-            } else {
-                println!("{}", format!("Error starting gemini command: {}", e).red());
-            }
+            println!("{}", format!("❌ Failed to initialize AI processor: {}", e).red());
+            println!("{}", "💡 Make sure you have set GOOGLE_API_KEY in your environment or .env file".yellow());
+            println!("{}", "   You can get an API key from: https://aistudio.google.com/app/apikey".cyan());
             return Ok(());
         }
     };
 
-    // Write JSON data to stdin and close it
-    if let Some(mut stdin) = cmd.stdin.take() {
-        stdin.write_all(json_output.as_bytes())?;
-        stdin.flush()?;
-        drop(stdin); // Close stdin so gemini knows input is complete
-    }
+    match processor.process_episodes(results).await {
+        Ok(response) => {
+            println!("\n{}", "✅ AI Processing Results:".green().bold());
+            println!("{}", "=".repeat(50).green());
+            println!("{}", response);
+            println!("{}", "=".repeat(50).green());
 
-    // Wait for the command to complete (output streams directly to console)
-    let status = cmd.wait()?;
-
-    if status.success() {
-        println!("\n{}", "AI processing completed successfully!".green());
-    } else {
-        println!("\n{}", format!("AI processing failed with exit code: {:?}", status.code()).red());
-        println!("{}", "You can try running the command manually:".yellow());
-        println!("echo '{}' | gemini -y -p \"{}\"", json_output, ai_prompt);
+            // Optionally save the results to a file
+            let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+            let filename = format!("ai_sorted_episodes_{}.txt", timestamp);
+            
+            if let Ok(mut file) = File::create(&filename) {
+                writeln!(file, "AI Sorted Episodes - Generated on {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC"))?;
+                writeln!(file, "{}", "=".repeat(70))?;
+                writeln!(file, "{}", response)?;
+                println!("\n{}", format!("📄 Results saved to: {}", filename).cyan());
+            }
+        }
+        Err(e) => {
+            println!("{}", format!("❌ AI processing failed: {}", e).red());
+            println!("{}", "💡 The AI might need more specific episode information or the search tools might be having issues".yellow());
+        }
     }
 
     Ok(())
