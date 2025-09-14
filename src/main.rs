@@ -79,7 +79,7 @@ enum Commands {
         #[arg(long = "no-future")]
         exclude_future: bool,
 
-        /// Output format (table, json, csv, xspf, oneline, onelinetheme)
+        /// Output format (table, json, csv, xspf, oneline, onelinetheme, theme-count)
         #[arg(short = 'f', long, default_value = "onelinetheme")]
         format: String,
 
@@ -249,6 +249,9 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
             }
             "onelinetheme" => {
                 print_oneline_theme(&filtered_results);
+            }
+            "theme-count" => {
+                print_theme_count_table(&filtered_results);
             }
             _ => {
                 print_table(&filtered_results, &result.query_info);
@@ -777,6 +780,47 @@ fn print_oneline_theme(results: &[mediathekviewweb::models::Item]) {
             entry.topic.bright_magenta()
         );
     }
+}
+
+fn print_theme_count_table(results: &[mediathekviewweb::models::Item]) {
+    use std::collections::HashMap;
+
+    // Count themes
+    let mut theme_counts: HashMap<String, u32> = HashMap::new();
+    for entry in results {
+        *theme_counts.entry(entry.topic.clone()).or_insert(0) += 1;
+    }
+
+    // Convert to vector and sort by count (descending)
+    let mut sorted_themes: Vec<(String, u32)> = theme_counts.into_iter().collect();
+    sorted_themes.sort_by(|a, b| b.1.cmp(&a.1));
+
+    if sorted_themes.is_empty() {
+        println!("No themes found.");
+        return;
+    }
+
+    // Calculate optimal column width based on longest theme name
+    let max_theme_length = sorted_themes.iter()
+        .map(|(theme, _)| theme.len())
+        .max()
+        .unwrap_or(10);
+    let theme_width = std::cmp::max(max_theme_length + 2, 25); // Minimum 25 chars for "Theme" header
+    let total_width = theme_width + 10; // +10 for count column and spacing
+
+    // Print header
+    println!("{}", "Theme Count Report".bold().underline());
+    println!("{}", "─".repeat(total_width));
+    println!("{:<width$} {}", "Theme".bold(), "Count".bold(), width = theme_width);
+    println!("{}", "─".repeat(total_width));
+
+    // Print results
+    for (theme, count) in &sorted_themes {
+        println!("{:<width$} {}", theme.cyan(), count.to_string().green().bold(), width = theme_width);
+    }
+
+    println!("{}", "─".repeat(total_width));
+    println!("Total unique themes: {}", sorted_themes.len().to_string().yellow().bold());
 }
 
 fn print_xspf(results: &[mediathekviewweb::models::Item], query: &str) {
