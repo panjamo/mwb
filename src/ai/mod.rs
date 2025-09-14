@@ -159,14 +159,26 @@ impl AIProcessor {
 1. Analyze the provided German TV episodes/shows
 2. Use the available tools to search for chronological information about series if needed
 3. Group episodes by series/show name
-4. Sort episodes within each series chronologically (by air date, season/episode number, or story chronology)
-5. Remove duplicate episodes (same title, similar duration)
+4. **INTELLIGENT DEDUPLICATION**: Carefully identify and remove duplicate episodes. Look for:
+   - Episodes with identical or very similar titles (e.g., "Episode Title" vs "Episode Title (HD)")
+   - Same content with different audio tracks (e.g., "Title" vs "Title (Audiodeskription)")
+   - Different video qualities of the same episode (e.g., "Title" vs "Title (klare Sprache)")
+   - Episodes with matching descriptions but slightly different titles
+   - Same episode with different formatting or special versions
+5. Sort remaining unique episodes in ASCENDING chronological order (oldest first, newest last - by air date, season/episode number, or story chronology)
 6. **ALWAYS** call the create_vlc_playlist tool to create a VLC playlist - this is mandatory!
 
-IMPORTANT: You MUST call the create_vlc_playlist function at the end with ALL the episodes from the input data, even if you only have limited information. Create the playlist with the episodes provided, sorted in the best possible chronological order based on available information.
+DEDUPLICATION STRATEGY: When you find duplicates, keep the BEST version:
+- Prefer standard version over audio description versions ("Audiodeskription")
+- Prefer normal version over "klare Sprache" (simple language) versions
+- Prefer higher quality when available
+- Prefer complete/full versions over shortened versions
+- When in doubt, keep the version with the most complete title/description
+
+IMPORTANT: You MUST call the create_vlc_playlist function at the end with ONLY the deduplicated episodes, sorted in ASCENDING chronological order (oldest episodes first, newest episodes last). Be intelligent about deduplication - use your understanding of German TV naming conventions to identify duplicates that may have slightly different names.
 
 The create_vlc_playlist function expects:
-- episodes: array of {title, url, description} objects
+- episodes: array of {title, url, description} objects (AFTER deduplication)
 - playlist_name: a descriptive name for the playlist
 
 Use the episode data provided in the input to create the playlist entries. Extract the title, url_video, and description fields from each episode."#;
