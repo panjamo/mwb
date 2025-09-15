@@ -192,7 +192,7 @@ impl AIProcessor {
 * Kennungen im Titel wie "(S2/E10)" haben die höchste Priorität, (S2/E10) bedeutet Staffel 2, Episode 10, sortieren nach Staffel und Episoden
 * Zahlen am Ende der Titel wie zum Beispiel "(234)" bedeuten Episode 234 in Staffel 1
 * ansonsten verfügbaren Tools zu nutzen, um bei Bedarf chronologische Informationen über Serien zu suchen
-* **IMPORTENT** such auf jeden Fall mit "perform_google_search" nach der Episodenreihenfolge bei wikipedia.de"#.to_string();
+"#.to_string();
 
         if !search_hint.is_empty() {
             system_prompt.push_str(&format!("\n{}", search_hint));
