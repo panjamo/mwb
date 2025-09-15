@@ -24,6 +24,10 @@ use logging::init_tracing;
 #[command(about = "MediathekViewWeb CLI - Search German public broadcasting content")]
 #[command(version = "1.0")]
 struct Cli {
+    /// Enable verbose logging
+    #[arg(long, global = true)]
+    verbose: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -103,9 +107,7 @@ enum Commands {
         #[arg(short = 'x', long)]
         xspf_file: bool,
 
-        /// Enable verbose logging of search requests
-        #[arg(long)]
-        verbose: bool,
+
     },
     /// List available channels
     Channels,
@@ -117,12 +119,8 @@ const USER_AGENT: &str = "mwb-cli/1.0";
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Initialize tracing based on verbose flag from any command
-    let verbose = match &cli.command {
-        Commands::Search { verbose, .. } => *verbose,
-        Commands::Channels => false,
-    };
-    init_tracing(verbose);
+    // Initialize tracing based on global verbose flag
+    init_tracing(cli.verbose);
 
     let client = Mediathek::new(USER_AGENT.parse()?)?;
 
@@ -141,7 +139,7 @@ async fn main() -> Result<()> {
             vlc_ai,
             xspf_file,
             count,
-            verbose: _,
+
         } => {
             let params = SearchParams {
                 query_terms: query,
