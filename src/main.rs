@@ -38,7 +38,7 @@ struct SearchParams {
     exclude_future: bool,
     format: String,
     vlc: Option<String>,
-    vlc_ai: bool,
+    vlc_ai: Option<String>,
     xspf_file: bool,
     count: bool,
     verbose: bool,
@@ -94,8 +94,9 @@ enum Commands {
         vlc: Option<String>,
 
         /// Process results with AI (Gemini) for chronological sorting, deduplication, and VLC playlist creation
-        #[arg(long = "vlc-ai")]
-        vlc_ai: bool,
+        /// If provided with a value, uses that information for AI web search to find the Wikipedia page
+        #[arg(long = "vlc-ai", value_name = "SEARCH_INFO", require_equals = true, num_args = 0..=1, default_missing_value = "")]
+        vlc_ai: Option<String>,
 
         /// Save XSPF playlist to file (use with -f xspf)
         #[arg(short = 'x', long)]
@@ -273,8 +274,8 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
 
     if params.count {
         println!("{}", filtered_results.len());
-    } else if params.vlc_ai {
-        process_with_ai(&filtered_results, params.verbose).await?;
+    } else if params.vlc_ai.is_some() {
+        process_with_ai(&filtered_results, params.verbose, params.vlc_ai.as_deref()).await?;
     } else if let Some(quality) = params.vlc {
         // Validate quality parameter and set default if invalid
         let validated_quality = match quality.as_str() {
@@ -355,7 +356,7 @@ async fn multi_search_content(client: &Mediathek, params: SearchParams) -> Resul
             exclude_future: params.exclude_future,
             format: params.format.clone(),
             vlc: params.vlc.clone(),
-            vlc_ai: params.vlc_ai,
+            vlc_ai: params.vlc_ai.clone(),
             xspf_file: params.xspf_file,
             count: params.count,
             verbose: false, // Suppress individual search verbosity
@@ -465,8 +466,8 @@ async fn multi_search_content(client: &Mediathek, params: SearchParams) -> Resul
     // Output results using the same logic as single search
     if params.count {
         println!("{}", filtered_results.len());
-    } else if params.vlc_ai {
-        process_with_ai(&filtered_results, params.verbose).await?;
+    } else if params.vlc_ai.is_some() {
+        process_with_ai(&filtered_results, params.verbose, params.vlc_ai.as_deref()).await?;
     } else if let Some(quality) = params.vlc {
         let validated_quality = match quality.as_str() {
             "l" | "low" => "l",
@@ -748,7 +749,7 @@ fn generate_vlc_playlist_filename(query: &str) -> String {
     format!("mwb_{truncated}_{timestamp}.xspf")
 }
 
-async fn process_with_ai(results: &[mediathekviewweb::models::Item], verbose: bool) -> Result<()> {
+async fn process_with_ai(results: &[mediathekviewweb::models::Item], verbose: bool, search_info: Option<&str>) -> Result<()> {
     if results.is_empty() {
         println!("{}", "No results found to process with AI.".yellow());
         return Ok(());
@@ -759,7 +760,7 @@ async fn process_with_ai(results: &[mediathekviewweb::models::Item], verbose: bo
 
     println!("{}", "🚀 Initializing Gemini AI processor...".yellow());
 
-    let processor = match AIProcessor::new_with_verbose(verbose).await {
+    let processor = match AIProcessor::new_with_verbose(verbose, search_info).await {
         Ok(processor) => processor,
         Err(e) => {
             println!(

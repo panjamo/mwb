@@ -131,11 +131,12 @@ pub struct AIProcessor {
     api_key: String,
     base_url: String,
     verbose: bool,
+    search_info: Option<String>,
 }
 
 impl AIProcessor {
-    /// Create a new AI processor with verbose flag
-    pub async fn new_with_verbose(verbose: bool) -> Result<Self> {
+    /// Create a new AI processor with verbose flag and optional search info
+    pub async fn new_with_verbose(verbose: bool, search_info: Option<&str>) -> Result<Self> {
         let api_key = env::var("GOOGLE_API_KEY")
             .map_err(|_| {
                 Self::handle_api_key_error();
@@ -154,6 +155,7 @@ impl AIProcessor {
             api_key,
             base_url,
             verbose,
+            search_info: search_info.map(|s| s.to_string()),
         })
     }
 
@@ -174,13 +176,29 @@ impl AIProcessor {
         // Convert results to a more structured format for the AI
         let episodes_json = self.format_episodes_for_ai(results)?;
 
-        let system_prompt = r#"Sie sind ein Experte für TV-Serien-Analyse und VLC-Playlist-Erstellung. Ihre Aufgabe ist es:
+        let search_hint = if let Some(search_info) = &self.search_info {
+            if !search_info.is_empty() {
+                format!("* **ZUSÄTZLICHE SUCHINFORMATION**: Verwenden Sie diese Informationen für die Suche nach der Wikipedia-Seite: \"{}\"", search_info)
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        let mut system_prompt = r#"Sie sind ein Experte für TV-Serien-Analyse und VLC-Playlist-Erstellung. Ihre Aufgabe ist es:
 
 * Die bereitgestellten deutschen TV-Episoden/Sendungen zu analysieren
 * Kennungen im Titel wie "(S2/E10)" haben die höchste Priorität, (S2/E10) bedeutet Staffel 2, Episode 10, sortieren nach Staffel und Episoden
 * Zahlen am Ende der Titel wie zum Beispiel "(234)" bedeuten Episode 234 in Staffel 1
 * ansonsten verfügbaren Tools zu nutzen, um bei Bedarf chronologische Informationen über Serien zu suchen
-* **IMPORTENT** such auf jeden Fall mit "perform_google_search" nach der Episodenreihenfolge bei wikipedia.de
+* **IMPORTENT** such auf jeden Fall mit "perform_google_search" nach der Episodenreihenfolge bei wikipedia.de"#.to_string();
+
+        if !search_hint.is_empty() {
+            system_prompt.push_str(&format!("\n{}", search_hint));
+        }
+
+        system_prompt.push_str(r#"
 * **INTELLIGENTE DEDUPLIZIERUNG**: Sorgfältig Duplikate von Episoden identifizieren und entfernen. Achten Sie auf:
    - Episoden mit identischen oder sehr ähnlichen Titeln (z.B. "Episodentitel" vs "Episodentitel (HD)")
    - Gleicher Inhalt mit verschiedenen Tonspuren (z.B. "Titel" vs "Titel (Audiodeskription)")
@@ -200,10 +218,10 @@ DEDUPLIZIERUNGS-STRATEGIE: Bei Duplikaten die BESTE Version behalten:
 WICHTIG: Sie MÜSSEN die create_vlc_playlist Funktion am Ende mit NUR den deduplizierten Episoden aufrufen, sortiert in AUFSTEIGENDER chronologischer Reihenfolge (älteste Episoden zuerst, neueste zuletzt). Gehen Sie intelligent bei der Deduplizierung vor - nutzen Sie Ihr Verständnis deutscher TV-Namenskonventionen, um Duplikate mit leicht unterschiedlichen Namen zu identifizieren.
 
 Die create_vlc_playlist Funktion erwartet:
-- episodes: Array von {title, url, description, duration, channel, topic} Objekten (NACH Deduplizierung)
+- episodes: Array von {{title, url, description, duration, channel, topic}} Objekten (NACH Deduplizierung)
 - playlist_name: ein beschreibender Name für die Playlist
 
-Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist-Einträge zu erstellen. Extrahieren Sie die Felder title, url_video, description, duration, channel und topic aus jeder Episode."#;
+Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist-Einträge zu erstellen. Extrahieren Sie die Felder title, url_video, description, duration, channel und topic aus jeder Episode."#);
 
         let user_prompt = format!(
             "Please analyze and chronologically sort these German TV episodes:\n\n{}",

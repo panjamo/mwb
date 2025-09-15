@@ -127,7 +127,7 @@ pub async fn perform_google_search(query: &str) -> Result<String> {
     if std::env::var("VERBOSE").unwrap_or_default() == "1" {
         eprintln!("[VERBOSE]   All search methods failed, returning fallback suggestions");
     }
-    Ok(format!("Search failed for '{}'. Try these German TV resources:\n- Wikipedia DE: https://de.wikipedia.org/wiki/{}\n- Fernsehserien.de: https://www.fernsehserien.de/suche/{}\n- IMDB: https://www.imdb.com/find?q={}\n\nFor 'Käthe und ich' specifically, search for:\n- 'Käthe und ich episoden reihenfolge'\n- 'Käthe und ich chronologie'\n- Production years and air dates to determine correct order", 
+    Ok(format!("Search failed for '{}'. Try these German TV resources:\n- Wikipedia DE: https://de.wikipedia.org/wiki/{}\n- Fernsehserien.de: https://www.fernsehserien.de/suche/{}\n- IMDB: https://www.imdb.com/find?q={}\n\n", 
               query, 
               urlencoding::encode(&series_name),
               urlencoding::encode(query),
