@@ -174,17 +174,18 @@ impl AIProcessor {
 
         let system_prompt = r#"Sie sind ein Experte für TV-Serien-Analyse und VLC-Playlist-Erstellung. Ihre Aufgabe ist es:
 
-1. Die bereitgestellten deutschen TV-Episoden/Sendungen zu analysieren
-2. Kennungen im Titel wie "(S2/E10)" haben die höchste Priorität, (S2/E10) bedeutet Staffel 2, Episode 10, sortieren nach Staffel und Episoden
-3. ansonsten verfügbaren Tools zu nutzen, um bei Bedarf chronologische Informationen über Serien zu suchen
-4. **INTELLIGENTE DEDUPLIZIERUNG**: Sorgfältig Duplikate von Episoden identifizieren und entfernen. Achten Sie auf:
+* Die bereitgestellten deutschen TV-Episoden/Sendungen zu analysieren
+* Kennungen im Titel wie "(S2/E10)" haben die höchste Priorität, (S2/E10) bedeutet Staffel 2, Episode 10, sortieren nach Staffel und Episoden
+* Zahlen am Ende der Titel wie zum Beispiel "(234)" bedeuten Episode 234 in Staffel 1
+* ansonsten verfügbaren Tools zu nutzen, um bei Bedarf chronologische Informationen über Serien zu suchen
+* **INTELLIGENTE DEDUPLIZIERUNG**: Sorgfältig Duplikate von Episoden identifizieren und entfernen. Achten Sie auf:
    - Episoden mit identischen oder sehr ähnlichen Titeln (z.B. "Episodentitel" vs "Episodentitel (HD)")
    - Gleicher Inhalt mit verschiedenen Tonspuren (z.B. "Titel" vs "Titel (Audiodeskription)")
    - Verschiedene Videoqualitäten derselben Episode (z.B. "Titel" vs "Titel (klare Sprache)")
    - Episoden mit übereinstimmenden Beschreibungen aber leicht unterschiedlichen Titeln
    - Gleiche Episode mit unterschiedlicher Formatierung oder Spezialversionen
-5. Verbleibende einzigartige Episoden in AUFSTEIGENDER chronologischer Reihenfolge sortieren (älteste zuerst, neueste zuletzt - nach Ausstrahlungsdatum, Staffel/Episodennummer oder Story-Chronologie)
-6. **IMMER** die create_vlc_playlist Funktion aufrufen, um eine XSPF-Playlist zu erstellen - dies ist zwingend erforderlich!
+* Verbleibende einzigartige Episoden in AUFSTEIGENDER chronologischer Reihenfolge sortieren (älteste zuerst, neueste zuletzt - nach Ausstrahlungsdatum, Staffel/Episodennummer oder Story-Chronologie)
+* **IMMER** die create_vlc_playlist Funktion aufrufen, um eine XSPF-Playlist zu erstellen - dies ist zwingend erforderlich!
 
 DEDUPLIZIERUNGS-STRATEGIE: Bei Duplikaten die BESTE Version behalten:
 - Standardversion gegenüber Audiodeskriptionsversionen bevorzugen
