@@ -1,6 +1,40 @@
 //! Tools module for AI processing
 //!
 //! Provides web search and content extraction capabilities for the AI processor
+//! 
+//! ## Verbose Logging Implementation
+//! 
+//! When the application is run with the `--verbose` flag, detailed logging information
+//! is displayed for all AI tool calls, including:
+//! 
+//! ### Function Call Logging:
+//! - Function name being called by the LLM
+//! - Input parameters (query, URL, etc.)
+//! - Enhanced queries for search optimization
+//! 
+//! ### Search Process Logging:
+//! - DuckDuckGo API attempts and results
+//! - HTML scraping fallback attempts
+//! - Search failure handling and fallback suggestions
+//! 
+//! ### Content Extraction Logging:
+//! - Host detection for site-specific extraction
+//! - CSS selector attempts and success rates
+//! - Content filtering and extraction results
+//! - Character count summaries
+//! 
+//! ### Usage:
+//! The verbose logging is automatically enabled when `--verbose` flag is passed to the CLI.
+//! The AIProcessor sets the VERBOSE environment variable which is read by these tool functions
+//! to provide detailed tracing of LLM tool interactions.
+//! 
+//! ### Example Output:
+//! ```
+//! [VERBOSE] AI Tool Call: perform_google_search
+//! [VERBOSE]   query: "Käthe und ich episodes"
+//! [VERBOSE]   enhanced_query: "Käthe und ich episoden reihenfolge chronologisch wikipedia fernsehserien.de"
+//! [VERBOSE]   DDG API success: 1247 chars returned
+//! ```
 
 use anyhow::Result;
 use reqwest::Client;
@@ -13,6 +47,10 @@ use url::Url;
 /// This is a free alternative to paid search APIs
 /// Enhanced for German TV series episode information
 pub async fn perform_google_search(query: &str) -> Result<String> {
+    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+        eprintln!("[VERBOSE] AI Tool Call: perform_google_search");
+        eprintln!("[VERBOSE]   query: \"{}\"", query);
+    }
     // Enhance query for German TV series chronological information
     let enhanced_query = if query.to_lowercase().contains("käthe und ich") 
         || query.to_lowercase().contains("kathe und ich") {
@@ -20,6 +58,10 @@ pub async fn perform_google_search(query: &str) -> Result<String> {
     } else {
         format!("{} episodes chronological order episode guide", query)
     };
+
+    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+        eprintln!("[VERBOSE]   enhanced_query: \"{}\"", enhanced_query);
+    }
 
     let client = Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
@@ -59,7 +101,11 @@ pub async fn perform_google_search(query: &str) -> Result<String> {
                 }
 
                 if !results.is_empty() {
-                    return Ok(results.join("\n\n"));
+                    let result_summary = results.join("\n\n");
+                    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+                        eprintln!("[VERBOSE]   DDG API success: {} chars returned", result_summary.len());
+                    }
+                    return Ok(result_summary);
                 }
             }
         }
@@ -77,6 +123,9 @@ pub async fn perform_google_search(query: &str) -> Result<String> {
     match client.get(&search_url).send().await {
         Ok(response) => {
             if let Ok(html) = response.text().await {
+                if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+                    eprintln!("[VERBOSE]   Scraping DDG HTML results");
+                }
                 return scrape_duckduckgo_results(&html);
             }
         }
@@ -87,6 +136,9 @@ pub async fn perform_google_search(query: &str) -> Result<String> {
 
     // If all else fails, provide suggestions with German-specific sites
     let series_name = query.split_whitespace().take(3).collect::<Vec<&str>>().join("_");
+    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+        eprintln!("[VERBOSE]   All search methods failed, returning fallback suggestions");
+    }
     Ok(format!("Search failed for '{}'. Try these German TV resources:\n- Wikipedia DE: https://de.wikipedia.org/wiki/{}\n- Fernsehserien.de: https://www.fernsehserien.de/suche/{}\n- IMDB: https://www.imdb.com/find?q={}\n\nFor 'Käthe und ich' specifically, search for:\n- 'Käthe und ich episoden reihenfolge'\n- 'Käthe und ich chronologie'\n- Production years and air dates to determine correct order", 
               query, 
               urlencoding::encode(&series_name),
@@ -131,17 +183,32 @@ fn scrape_duckduckgo_results(html: &str) -> Result<String> {
     }
 
     if results.is_empty() {
+        if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+            eprintln!("[VERBOSE]   DDG scraping: No results found");
+        }
         Ok("No search results found.".to_string())
     } else {
-        Ok(results.join("\n\n---\n\n"))
+        let result_summary = results.join("\n\n---\n\n");
+        if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+            eprintln!("[VERBOSE]   DDG scraping success: {} results, {} chars", results.len(), result_summary.len());
+        }
+        Ok(result_summary)
     }
 }
 
 /// Reads and extracts content from a website
 pub async fn read_website_content(url: &str) -> Result<String> {
+    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+        eprintln!("[VERBOSE] AI Tool Call: read_website_content");
+        eprintln!("[VERBOSE]   url: \"{}\"", url);
+    }
 
     // Validate URL
     let parsed_url = Url::parse(url).map_err(|_| anyhow::anyhow!("Invalid URL: {}", url))?;
+    
+    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+        eprintln!("[VERBOSE]   validated_url: \"{}\"", parsed_url);
+    }
 
     let client = Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
@@ -163,12 +230,18 @@ pub async fn read_website_content(url: &str) -> Result<String> {
     // Limit content size to avoid overwhelming the AI
     const MAX_LENGTH: usize = 8000;
     if content.len() > MAX_LENGTH {
+        if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+            eprintln!("[VERBOSE]   Content truncated: {} -> {} chars", content.len(), MAX_LENGTH);
+        }
         Ok(format!(
             "{}...\n\n[Content truncated to {} characters]",
             &content[..MAX_LENGTH],
             MAX_LENGTH
         ))
     } else {
+        if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+            eprintln!("[VERBOSE]   Content extraction success: {} chars", content.len());
+        }
         Ok(content)
     }
 }
@@ -176,6 +249,10 @@ pub async fn read_website_content(url: &str) -> Result<String> {
 /// Extract main content from HTML document based on the website
 fn extract_main_content(document: &Html, url: &Url) -> Result<String> {
     let host = url.host_str().unwrap_or("");
+
+    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+        eprintln!("[VERBOSE]   Extracting content from host: \"{}\"", host);
+    }
 
     let selectors = match host {
         h if h.contains("wikipedia.org") => vec![
@@ -227,6 +304,9 @@ fn extract_main_content(document: &Html, url: &Url) -> Result<String> {
 
     // Try each selector until we find content
     for selector_str in &selectors {
+        if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+            eprintln!("[VERBOSE]     Trying selector: \"{}\"", selector_str);
+        }
         if let Ok(selector) = Selector::parse(selector_str) {
             let elements: Vec<String> = document
                 .select(&selector)
@@ -270,8 +350,14 @@ fn extract_main_content(document: &Html, url: &Url) -> Result<String> {
                 .collect();
 
             if !elements.is_empty() {
+                if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+                    eprintln!("[VERBOSE]       Found {} elements with selector \"{}\"", elements.len(), selector_str);
+                }
                 extracted_text.extend(elements);
                 if extracted_text.len() > 30 { // Increased threshold
+                    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+                        eprintln!("[VERBOSE]     Content threshold reached, stopping selector search");
+                    }
                     break; // We have enough content
                 }
             }
@@ -280,6 +366,9 @@ fn extract_main_content(document: &Html, url: &Url) -> Result<String> {
 
     // If specific selectors didn't work, try general paragraph extraction
     if extracted_text.is_empty() {
+        if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+            eprintln!("[VERBOSE]     Specific selectors failed, trying general paragraph extraction");
+        }
         let p_selector = Selector::parse("p").unwrap();
         extracted_text = document
             .select(&p_selector)
@@ -302,9 +391,16 @@ fn extract_main_content(document: &Html, url: &Url) -> Result<String> {
     }
 
     if extracted_text.is_empty() {
+        if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+            eprintln!("[VERBOSE]     No meaningful content extracted from webpage");
+        }
         return Err(anyhow::anyhow!(
             "Could not extract meaningful content from the webpage"
         ));
+    }
+
+    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
+        eprintln!("[VERBOSE]     Successfully extracted {} text blocks", extracted_text.len());
     }
 
     Ok(extracted_text.join("\n\n"))

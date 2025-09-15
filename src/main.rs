@@ -274,7 +274,7 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
     if params.count {
         println!("{}", filtered_results.len());
     } else if params.vlc_ai {
-        process_with_ai(&filtered_results).await?;
+        process_with_ai(&filtered_results, params.verbose).await?;
     } else if let Some(quality) = params.vlc {
         // Validate quality parameter and set default if invalid
         let validated_quality = match quality.as_str() {
@@ -466,7 +466,7 @@ async fn multi_search_content(client: &Mediathek, params: SearchParams) -> Resul
     if params.count {
         println!("{}", filtered_results.len());
     } else if params.vlc_ai {
-        process_with_ai(&filtered_results).await?;
+        process_with_ai(&filtered_results, params.verbose).await?;
     } else if let Some(quality) = params.vlc {
         let validated_quality = match quality.as_str() {
             "l" | "low" => "l",
@@ -748,7 +748,7 @@ fn generate_vlc_playlist_filename(query: &str) -> String {
     format!("mwb_{truncated}_{timestamp}.xspf")
 }
 
-async fn process_with_ai(results: &[mediathekviewweb::models::Item]) -> Result<()> {
+async fn process_with_ai(results: &[mediathekviewweb::models::Item], verbose: bool) -> Result<()> {
     if results.is_empty() {
         println!("{}", "No results found to process with AI.".yellow());
         return Ok(());
@@ -759,7 +759,7 @@ async fn process_with_ai(results: &[mediathekviewweb::models::Item]) -> Result<(
 
     println!("{}", "🚀 Initializing Gemini AI processor...".yellow());
 
-    let processor = match AIProcessor::new().await {
+    let processor = match AIProcessor::new_with_verbose(verbose).await {
         Ok(processor) => processor,
         Err(e) => {
             println!(

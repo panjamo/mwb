@@ -130,11 +130,17 @@ pub struct AIProcessor {
     client: Client,
     api_key: String,
     base_url: String,
+    verbose: bool,
 }
 
 impl AIProcessor {
     /// Create a new AI processor
     pub async fn new() -> Result<Self> {
+        Self::new_with_verbose(false).await
+    }
+
+    /// Create a new AI processor with verbose flag
+    pub async fn new_with_verbose(verbose: bool) -> Result<Self> {
         let api_key = env::var("GOOGLE_API_KEY")
             .map_err(|_| {
                 Self::handle_api_key_error();
@@ -152,6 +158,7 @@ impl AIProcessor {
             client,
             api_key,
             base_url,
+            verbose,
         })
     }
 
@@ -430,17 +437,34 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
         let function_name = &call.name;
         let args = &call.args;
 
+        if self.verbose {
+            eprintln!("[VERBOSE] AI Tool Call: {}", function_name);
+            eprintln!("[VERBOSE]   args: {}", serde_json::to_string_pretty(args).unwrap_or_else(|_| "invalid JSON".to_string()));
+        }
+
         let result_string = match function_name.as_str() {
             "perform_google_search" => {
                 let query = args["query"]
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("Missing 'query' argument"))?;
+                
+                // Set environment variable so tools.rs can read it
+                if self.verbose {
+                    std::env::set_var("VERBOSE", "1");
+                }
+                
                 perform_google_search(query).await?
             }
             "read_website_content" => {
                 let url = args["url"]
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("Missing 'url' argument"))?;
+                
+                // Set environment variable so tools.rs can read it
+                if self.verbose {
+                    std::env::set_var("VERBOSE", "1");
+                }
+                
                 read_website_content(url).await?
             }
             "create_vlc_playlist" => {
@@ -455,10 +479,17 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
             _ => return Err(anyhow::anyhow!("Unknown function: {}", function_name)),
         };
 
-        Ok(FunctionResponse {
+        let response = FunctionResponse {
             name: function_name.clone(),
             response: json!({ "result": result_string }),
-        })
+        };
+
+        if self.verbose {
+            eprintln!("[VERBOSE] AI Tool Response: {}", function_name);
+            eprintln!("[VERBOSE]   result length: {} chars", result_string.len());
+        }
+
+        Ok(response)
     }
 
     /// Create VLC playlist and launch VLC
