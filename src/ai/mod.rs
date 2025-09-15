@@ -130,13 +130,12 @@ pub struct AIProcessor {
     client: Client,
     api_key: String,
     base_url: String,
-    verbose: bool,
     search_info: Option<String>,
 }
 
 impl AIProcessor {
-    /// Create a new AI processor with verbose flag and optional search info
-    pub async fn new_with_verbose(verbose: bool, search_info: Option<&str>) -> Result<Self> {
+    /// Create a new AI processor with optional search info
+    pub async fn new_with_verbose(search_info: Option<&str>) -> Result<Self> {
         let api_key = env::var("GOOGLE_API_KEY")
             .map_err(|_| {
                 Self::handle_api_key_error();
@@ -154,7 +153,6 @@ impl AIProcessor {
             client,
             api_key,
             base_url,
-            verbose,
             search_info: search_info.map(|s| s.to_string()),
         })
     }
@@ -236,13 +234,11 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
             }],
         }];
 
-        // Debug: Print tool definitions
-        if self.verbose {
-            eprintln!("[VERBOSE] Registered {} tools:", tools.len());
-            for tool in &tools {
-                for func in &tool.function_declarations {
-                    eprintln!("[VERBOSE]   - {}: {}", func.name, func.description);
-                }
+        // Log registered tools
+        tracing::debug!(tool_count = %tools.len(), "AI tools registered");
+        for tool in &tools {
+            for func in &tool.function_declarations {
+                tracing::debug!(tool_name = %func.name, description = %func.description, "Tool registered");
             }
         }
 
@@ -264,11 +260,13 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                 },
             };
 
-            // Debug: Log request details
-            if self.verbose {
-                eprintln!("[VERBOSE] Sending request with {} tools", request.tools.len());
-                eprintln!("[VERBOSE] Request has {} conversation turns", request.contents.len());
-            }
+            // Log request details
+            tracing::debug!(
+                iteration = %iteration,
+                tool_count = %request.tools.len(),
+                conversation_turns = %request.contents.len(),
+                "Sending request to Gemini API"
+            );
 
             let response = match self.call_gemini_api(&request).await {
                 Ok(response) => response,
@@ -281,19 +279,17 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
             if let Some(candidate) = response.candidates.first() {
                 let content = &candidate.content;
 
-                // Debug: Log response type
-                if self.verbose {
-                    eprintln!("[VERBOSE] Response received with {} parts", content.parts.len());
-                    for (i, part) in content.parts.iter().enumerate() {
-                        match part {
-                            ResponsePart::FunctionCall { function_call } => {
-                                eprintln!("[VERBOSE]   Part {}: Function call to {}", i, function_call.name);
-                            }
-                            ResponsePart::Text { text } => {
-                                eprintln!("[VERBOSE]   Part {}: Text response ({} chars)", i, text.len());
-                                if text.len() < 200 {
-                                    eprintln!("[VERBOSE]     Preview: {}", text.trim());
-                                }
+                // Log response details
+                tracing::debug!(part_count = %content.parts.len(), "Response received from Gemini API");
+                for (i, part) in content.parts.iter().enumerate() {
+                    match part {
+                        ResponsePart::FunctionCall { function_call } => {
+                            tracing::debug!(part_index = %i, function_name = %function_call.name, "Response part: function call");
+                        }
+                        ResponsePart::Text { text } => {
+                            tracing::debug!(part_index = %i, text_length = %text.len(), "Response part: text");
+                            if text.len() < 200 {
+                                tracing::debug!(preview = %text.trim(), "Text preview");
                             }
                         }
                     }
@@ -519,10 +515,11 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
         let function_name = &call.name;
         let args = &call.args;
 
-        if self.verbose {
-            eprintln!("[VERBOSE] AI Tool Call: {}", function_name);
-            eprintln!("[VERBOSE]   args: {}", serde_json::to_string_pretty(args).unwrap_or_else(|_| "invalid JSON".to_string()));
-        }
+        tracing::info!(
+            function = %function_name,
+            args = %serde_json::to_string_pretty(args).unwrap_or_else(|_| "invalid JSON".to_string()),
+            "Executing AI tool call"
+        );
 
         // Enforce tool usage order - read_website_content cannot be called before perform_google_search
         if function_name == "read_website_content" {
@@ -538,10 +535,7 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("Missing 'query' argument"))?;
                 
-                // Set environment variable so tools.rs can read it
-                if self.verbose {
-                    std::env::set_var("VERBOSE", "1");
-                }
+                tracing::debug!(query = %query, "Performing Google search");
                 
                 // Mark that search tool has been used
                 std::env::set_var("SEARCH_TOOL_USED", "1");
@@ -553,10 +547,7 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("Missing 'url' argument"))?;
                 
-                // Set environment variable so tools.rs can read it
-                if self.verbose {
-                    std::env::set_var("VERBOSE", "1");
-                }
+                tracing::debug!(url = %url, "Reading website content");
                 
                 read_website_content(url).await?
             }
@@ -577,10 +568,11 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
             response: json!({ "result": result_string }),
         };
 
-        if self.verbose {
-            eprintln!("[VERBOSE] AI Tool Response: {}", function_name);
-            eprintln!("[VERBOSE]   result length: {} chars", result_string.len());
-        }
+        tracing::info!(
+            function = %function_name,
+            result_length = %result_string.len(),
+            "AI tool call completed"
+        );
 
         Ok(response)
     }

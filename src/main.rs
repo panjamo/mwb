@@ -15,7 +15,9 @@ use std::io::Write;
 use std::process::Command;
 
 mod ai;
+mod logging;
 use ai::AIProcessor;
+use logging::init_tracing;
 
 #[derive(Parser)]
 #[command(name = "mwb")]
@@ -41,7 +43,6 @@ struct SearchParams {
     vlc_ai: Option<String>,
     xspf_file: bool,
     count: bool,
-    verbose: bool,
 }
 
 #[derive(Subcommand)]
@@ -116,6 +117,13 @@ const USER_AGENT: &str = "mwb-cli/1.0";
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    // Initialize tracing based on verbose flag from any command
+    let verbose = match &cli.command {
+        Commands::Search { verbose, .. } => *verbose,
+        Commands::Channels => false,
+    };
+    init_tracing(verbose);
+
     let client = Mediathek::new(USER_AGENT.parse()?)?;
 
     match cli.command {
@@ -133,7 +141,7 @@ async fn main() -> Result<()> {
             vlc_ai,
             xspf_file,
             count,
-            verbose,
+            verbose: _,
         } => {
             let params = SearchParams {
                 query_terms: query,
@@ -149,7 +157,6 @@ async fn main() -> Result<()> {
                 vlc_ai,
                 xspf_file,
                 count,
-                verbose,
             };
             search_content(&client, params).await?;
         }
@@ -182,26 +189,19 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
         client.query_string(&search_terms_only, false)
     };
 
-    if params.verbose {
-        println!("{}", "=== MediathekView Search Request ===".bright_yellow().bold());
-        println!("{}: {}", "Original query".bold(), query_string.green());
-        if !duration_filters.is_empty() {
-            println!("{}: {}", "Duration filters".bold(), duration_filters.join(", ").cyan());
-        }
-        println!("{}: {}", "Search terms".bold(), if search_terms_only.is_empty() { "<empty>".to_string() } else { search_terms_only.clone() }.cyan());
-        println!("{}: {}", "Size".bold(), params.size.to_string().cyan());
-        println!("{}: {}", "Offset".bold(), params.offset.to_string().cyan());
-        println!("{}: {}", "Sort by".bold(), params.sort_by.cyan());
-        println!("{}: {}", "Sort order".bold(), params.sort_order.cyan());
-        println!("{}: {}", "Exclude future".bold(), params.exclude_future.to_string().cyan());
-        if let Some(ref patterns) = params.exclude_patterns {
-            println!("{}: {}", "Exclude patterns".bold(), patterns.join(", ").red());
-        }
-        if let Some(ref patterns) = params.include_patterns {
-            println!("{}: {}", "Include patterns".bold(), patterns.join(", ").green());
-        }
-        println!("{}", "===================================".bright_yellow().bold());
-    }
+    tracing::info!(
+        original_query = %query_string,
+        duration_filters = ?duration_filters,
+        search_terms = %search_terms_only,
+        size = %params.size,
+        offset = %params.offset,
+        sort_by = %params.sort_by,
+        sort_order = %params.sort_order,
+        exclude_future = %params.exclude_future,
+        exclude_patterns = ?params.exclude_patterns,
+        include_patterns = ?params.include_patterns,
+        "Starting MediathekView search request"
+    );
 
     // Apply duration filters extracted from the query
     for filter in duration_filters {
@@ -239,22 +239,19 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
     query_builder = query_builder.sort_by(sort_field).sort_order(sort_direction);
 
     // Execute the query
-    let start_time = if params.verbose { Some(Instant::now()) } else { None };
+    let start_time = Instant::now();
     
-    if params.verbose {
-        println!("{}", "Executing API request...".bright_blue().bold());
-    }
+    tracing::info!("Executing MediathekView API request");
     
     let result = query_builder.send().await?;
     
-    if params.verbose {
-        if let Some(start) = start_time {
-            let duration = start.elapsed();
-            println!("{}: {:.2}s", "API Response time".bold(), duration.as_secs_f64().to_string().green());
-            println!("{}: {}", "Total results found".bold(), result.results.len().to_string().cyan());
-            println!("{}: {}", "Total results available".bold(), result.query_info.total_results.to_string().cyan());
-        }
-    }
+    let duration = start_time.elapsed();
+    tracing::info!(
+        response_time_ms = %duration.as_millis(),
+        results_found = %result.results.len(),
+        total_available = %result.query_info.total_results,
+        "MediathekView API request completed"
+    );
 
     // Save original count before moving results
     let original_count = result.results.len();
@@ -266,16 +263,18 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
         params.include_patterns,
     )?;
 
-    if params.verbose && filtered_results.len() != original_count {
-        println!("{}: {} → {}", "After regex filtering".bold(), 
-                original_count.to_string().yellow(), 
-                filtered_results.len().to_string().green());
+    if filtered_results.len() != original_count {
+        tracing::info!(
+            before_count = %original_count,
+            after_count = %filtered_results.len(),
+            "Results filtered by regex patterns"
+        );
     }
 
     if params.count {
         println!("{}", filtered_results.len());
     } else if params.vlc_ai.is_some() {
-        process_with_ai(&filtered_results, params.verbose, params.vlc_ai.as_deref()).await?;
+        process_with_ai(&filtered_results, params.vlc_ai.as_deref()).await?;
     } else if let Some(quality) = params.vlc {
         // Validate quality parameter and set default if invalid
         let validated_quality = match quality.as_str() {
@@ -324,25 +323,23 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
 async fn multi_search_content(client: &Mediathek, params: SearchParams) -> Result<()> {
     use std::collections::HashSet;
     
-    if params.verbose {
-        println!("{}", "=== Multi-Search Mode ===".bright_yellow().bold());
-        println!("{}: {}", "Search terms".bold(), params.query_terms.join(", ").green());
-        println!("{}: {}", "Total searches".bold(), params.query_terms.len().to_string().cyan());
-        println!("{}", "========================".bright_yellow().bold());
-    }
+    tracing::info!(
+        search_terms = ?params.query_terms,
+        total_searches = %params.query_terms.len(),
+        "Starting multi-search mode"
+    );
 
     let mut all_results = Vec::new();
     let mut seen_urls = HashSet::new(); // For deduplication
 
     // Perform separate search for each query term
     for (index, query_term) in params.query_terms.iter().enumerate() {
-        if params.verbose {
-            println!("{}: {} ({}/{})", 
-                "Searching".bright_blue().bold(), 
-                query_term.cyan(),
-                (index + 1).to_string().yellow(),
-                params.query_terms.len().to_string().yellow());
-        }
+        tracing::info!(
+            query_term = %query_term,
+            search_index = %(index + 1),
+            total_searches = %params.query_terms.len(),
+            "Executing individual search"
+        );
 
         // Create params for individual search
         let individual_params = SearchParams {
@@ -359,7 +356,6 @@ async fn multi_search_content(client: &Mediathek, params: SearchParams) -> Resul
             vlc_ai: params.vlc_ai.clone(),
             xspf_file: params.xspf_file,
             count: params.count,
-            verbose: false, // Suppress individual search verbosity
         };
 
         // Perform individual search
@@ -408,9 +404,11 @@ async fn multi_search_content(client: &Mediathek, params: SearchParams) -> Resul
         // Execute the query
         let result = query_builder.send().await?;
         
-        if params.verbose {
-            println!("{}: {} results", "Found".green(), result.results.len().to_string().cyan());
-        }
+        tracing::info!(
+            query_term = %query_term,
+            result_count = %result.results.len(),
+            "Search completed"
+        );
 
         // Add results with deduplication based on URL
         for item in result.results {
@@ -420,11 +418,10 @@ async fn multi_search_content(client: &Mediathek, params: SearchParams) -> Resul
         }
     }
 
-    if params.verbose {
-        println!("{}", "=== Multi-Search Results ===".bright_yellow().bold());
-        println!("{}: {}", "Total unique results".bold(), all_results.len().to_string().green());
-        println!("{}", "===========================".bright_yellow().bold());
-    }
+    tracing::info!(
+        total_unique_results = %all_results.len(),
+        "Multi-search completed"
+    );
 
     // Sort unified results according to specified sort parameters
     all_results.sort_by(|a, b| {
@@ -453,21 +450,29 @@ async fn multi_search_content(client: &Mediathek, params: SearchParams) -> Resul
     });
 
     // Apply client-side regex filters to unified results
+    // Save count before moving results
+    let original_count = all_results.len();
+    
+    // Apply client-side regex filters
     let filtered_results = apply_regex_filters(
         all_results,
         params.exclude_patterns,
         params.include_patterns,
     )?;
 
-    if params.verbose {
-        println!("{}: {}", "After regex filtering".bold(), filtered_results.len().to_string().green());
+    if filtered_results.len() != original_count {
+        tracing::info!(
+            before_count = %original_count,
+            after_count = %filtered_results.len(),
+            "Results filtered by regex patterns"
+        );
     }
 
     // Output results using the same logic as single search
     if params.count {
         println!("{}", filtered_results.len());
     } else if params.vlc_ai.is_some() {
-        process_with_ai(&filtered_results, params.verbose, params.vlc_ai.as_deref()).await?;
+        process_with_ai(&filtered_results, params.vlc_ai.as_deref()).await?;
     } else if let Some(quality) = params.vlc {
         let validated_quality = match quality.as_str() {
             "l" | "low" => "l",
@@ -749,7 +754,7 @@ fn generate_vlc_playlist_filename(query: &str) -> String {
     format!("mwb_{truncated}_{timestamp}.xspf")
 }
 
-async fn process_with_ai(results: &[mediathekviewweb::models::Item], verbose: bool, search_info: Option<&str>) -> Result<()> {
+async fn process_with_ai(results: &[mediathekviewweb::models::Item], search_info: Option<&str>) -> Result<()> {
     if results.is_empty() {
         println!("{}", "No results found to process with AI.".yellow());
         return Ok(());
@@ -760,7 +765,7 @@ async fn process_with_ai(results: &[mediathekviewweb::models::Item], verbose: bo
 
     println!("{}", "🚀 Initializing Gemini AI processor...".yellow());
 
-    let processor = match AIProcessor::new_with_verbose(verbose, search_info).await {
+    let processor = match AIProcessor::new_with_verbose(search_info).await {
         Ok(processor) => processor,
         Err(e) => {
             println!(

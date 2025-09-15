@@ -2,10 +2,9 @@
 //!
 //! Provides web search and content extraction capabilities for the AI processor
 //! 
-//! ## Verbose Logging Implementation
+//! ## Structured Logging Implementation
 //! 
-//! When the application is run with the `--verbose` flag, detailed logging information
-//! is displayed for all AI tool calls, including:
+//! Uses the tracing crate for structured logging throughout all AI tool operations:
 //! 
 //! ### Function Call Logging:
 //! - Function name being called by the LLM
@@ -24,9 +23,8 @@
 //! - Character count summaries
 //! 
 //! ### Usage:
-//! The verbose logging is automatically enabled when `--verbose` flag is passed to the CLI.
-//! The AIProcessor sets the VERBOSE environment variable which is read by these tool functions
-//! to provide detailed tracing of LLM tool interactions.
+//! Logging is automatically configured based on the `--verbose` flag passed to the CLI.
+//! All trace events use structured fields for better observability and debugging.
 //! 
 
 use anyhow::Result;
@@ -40,16 +38,11 @@ use url::Url;
 /// This is a free alternative to paid search APIs
 /// Enhanced for German TV series episode information
 pub async fn perform_google_search(query: &str) -> Result<String> {
-    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-        eprintln!("[VERBOSE] AI Tool Call: perform_google_search");
-        eprintln!("[VERBOSE]   query: \"{}\"", query);
-    }
+    tracing::info!(query = %query, "Starting web search");
 
     let enhanced_query = format!("{} wikipedia", query);
 
-    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-        eprintln!("[VERBOSE]   enhanced_query: \"{}\"", enhanced_query);
-    }
+    tracing::debug!(enhanced_query = %enhanced_query, "Enhanced search query");
 
     let client = Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
@@ -90,9 +83,10 @@ pub async fn perform_google_search(query: &str) -> Result<String> {
 
                 if !results.is_empty() {
                     let result_summary = results.join("\n\n");
-                    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-                        eprintln!("[VERBOSE]   DDG API success: {} chars returned", result_summary.len());
-                    }
+                    tracing::info!(
+                        result_length = %result_summary.len(),
+                        "DuckDuckGo API search successful"
+                    );
                     return Ok(result_summary);
                 }
             }
@@ -111,9 +105,7 @@ pub async fn perform_google_search(query: &str) -> Result<String> {
     match client.get(&search_url).send().await {
         Ok(response) => {
             if let Ok(html) = response.text().await {
-                if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-                    eprintln!("[VERBOSE]   Scraping DDG HTML results");
-                }
+                tracing::debug!("Attempting to scrape DuckDuckGo HTML results");
                 return scrape_duckduckgo_results(&html);
             }
         }
@@ -124,9 +116,7 @@ pub async fn perform_google_search(query: &str) -> Result<String> {
 
     // If all else fails, provide suggestions with German-specific sites
     let series_name = query.split_whitespace().take(3).collect::<Vec<&str>>().join("_");
-    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-        eprintln!("[VERBOSE]   All search methods failed, returning fallback suggestions");
-    }
+    tracing::warn!("All search methods failed, returning fallback suggestions");
     Ok(format!("Search failed for '{}'. Try these German TV resources:\n- Wikipedia DE: https://de.wikipedia.org/wiki/{}\n- Fernsehserien.de: https://www.fernsehserien.de/suche/{}\n- IMDB: https://www.imdb.com/find?q={}\n\n", 
               query, 
               urlencoding::encode(&series_name),
@@ -171,32 +161,27 @@ fn scrape_duckduckgo_results(html: &str) -> Result<String> {
     }
 
     if results.is_empty() {
-        if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-            eprintln!("[VERBOSE]   DDG scraping: No results found");
-        }
-        Ok("No search results found.".to_string())
+        tracing::warn!("DuckDuckGo scraping found no results");
+        return Ok("No search results found".to_string());
     } else {
         let result_summary = results.join("\n\n---\n\n");
-        if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-            eprintln!("[VERBOSE]   DDG scraping success: {} results, {} chars", results.len(), result_summary.len());
-        }
-        Ok(result_summary)
+        tracing::info!(
+            result_count = %results.len(),
+            total_length = %result_summary.len(),
+            "DuckDuckGo scraping successful"
+        );
+        return Ok(result_summary);
     }
 }
 
 /// Reads and extracts content from a website
 pub async fn read_website_content(url: &str) -> Result<String> {
-    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-        eprintln!("[VERBOSE] AI Tool Call: read_website_content");
-        eprintln!("[VERBOSE]   url: \"{}\"", url);
-    }
+    tracing::info!(url = %url, "Starting website content extraction");
 
     // Validate URL
     let parsed_url = Url::parse(url).map_err(|_| anyhow::anyhow!("Invalid URL: {}", url))?;
     
-    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-        eprintln!("[VERBOSE]   validated_url: \"{}\"", parsed_url);
-    }
+    tracing::debug!(validated_url = %parsed_url, "URL validation successful");
 
     let client = Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
@@ -218,18 +203,18 @@ pub async fn read_website_content(url: &str) -> Result<String> {
     // Limit content size to avoid overwhelming the AI
     const MAX_LENGTH: usize = 8000;
     if content.len() > MAX_LENGTH {
-        if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-            eprintln!("[VERBOSE]   Content truncated: {} -> {} chars", content.len(), MAX_LENGTH);
-        }
+        tracing::info!(
+            original_length = %content.len(),
+            truncated_length = %MAX_LENGTH,
+            "Content truncated due to size limit"
+        );
         Ok(format!(
             "{}...\n\n[Content truncated to {} characters]",
             &content[..MAX_LENGTH],
             MAX_LENGTH
         ))
     } else {
-        if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-            eprintln!("[VERBOSE]   Content extraction success: {} chars", content.len());
-        }
+        tracing::info!(content_length = %content.len(), "Content extraction successful");
         Ok(content)
     }
 }
@@ -238,9 +223,7 @@ pub async fn read_website_content(url: &str) -> Result<String> {
 fn extract_main_content(document: &Html, url: &Url) -> Result<String> {
     let host = url.host_str().unwrap_or("");
 
-    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-        eprintln!("[VERBOSE]   Extracting content from host: \"{}\"", host);
-    }
+    tracing::debug!(host = %host, "Extracting content from website");
 
     let selectors = match host {
         h if h.contains("wikipedia.org") => vec![
@@ -292,9 +275,7 @@ fn extract_main_content(document: &Html, url: &Url) -> Result<String> {
 
     // Try each selector until we find content
     for selector_str in &selectors {
-        if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-            eprintln!("[VERBOSE]     Trying selector: \"{}\"", selector_str);
-        }
+        tracing::debug!(selector = %selector_str, "Trying CSS selector");
         if let Ok(selector) = Selector::parse(selector_str) {
             let elements: Vec<String> = document
                 .select(&selector)
@@ -338,15 +319,15 @@ fn extract_main_content(document: &Html, url: &Url) -> Result<String> {
                 .collect();
 
             if !elements.is_empty() {
-                if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-                    eprintln!("[VERBOSE]       Found {} elements with selector \"{}\"", elements.len(), selector_str);
-                }
+                tracing::debug!(
+                    element_count = %elements.len(),
+                    selector = %selector_str,
+                    "Found elements with CSS selector"
+                );
                 extracted_text.extend(elements);
                 if extracted_text.len() > 30 { // Increased threshold
-                    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-                        eprintln!("[VERBOSE]     Content threshold reached, stopping selector search");
-                    }
-                    break; // We have enough content
+                    tracing::debug!("Content threshold reached, stopping selector search");
+                    break;
                 }
             }
         }
@@ -354,9 +335,7 @@ fn extract_main_content(document: &Html, url: &Url) -> Result<String> {
 
     // If specific selectors didn't work, try general paragraph extraction
     if extracted_text.is_empty() {
-        if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-            eprintln!("[VERBOSE]     Specific selectors failed, trying general paragraph extraction");
-        }
+        tracing::debug!("Specific selectors failed, trying general paragraph extraction");
         let p_selector = Selector::parse("p").unwrap();
         extracted_text = document
             .select(&p_selector)
@@ -378,17 +357,16 @@ fn extract_main_content(document: &Html, url: &Url) -> Result<String> {
     }
 
     if extracted_text.is_empty() {
-        if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-            eprintln!("[VERBOSE]     No meaningful content extracted from webpage");
-        }
+        tracing::warn!("No meaningful content extracted from webpage");
         return Err(anyhow::anyhow!(
-            "Could not extract meaningful content from the webpage"
+            "Could not extract meaningful content from webpage"
         ));
     }
 
-    if std::env::var("VERBOSE").unwrap_or_default() == "1" {
-        eprintln!("[VERBOSE]     Successfully extracted {} text blocks", extracted_text.len());
-    }
+    tracing::info!(
+        text_blocks = %extracted_text.len(),
+        "Successfully extracted content blocks"
+    );
 
     Ok(extracted_text.join("\n\n"))
 }
