@@ -28,13 +28,6 @@
 //! The AIProcessor sets the VERBOSE environment variable which is read by these tool functions
 //! to provide detailed tracing of LLM tool interactions.
 //! 
-//! ### Example Output:
-//! ```
-//! [VERBOSE] AI Tool Call: perform_google_search
-//! [VERBOSE]   query: "Käthe und ich episodes"
-//! [VERBOSE]   enhanced_query: "Käthe und ich episoden reihenfolge chronologisch wikipedia fernsehserien.de"
-//! [VERBOSE]   DDG API success: 1247 chars returned
-//! ```
 
 use anyhow::Result;
 use reqwest::Client;
@@ -51,13 +44,8 @@ pub async fn perform_google_search(query: &str) -> Result<String> {
         eprintln!("[VERBOSE] AI Tool Call: perform_google_search");
         eprintln!("[VERBOSE]   query: \"{}\"", query);
     }
-    // Enhance query for German TV series chronological information
-    let enhanced_query = if query.to_lowercase().contains("käthe und ich") 
-        || query.to_lowercase().contains("kathe und ich") {
-        format!("{} episoden reihenfolge chronologisch wikipedia fernsehserien.de", query)
-    } else {
-        format!("{} episodes chronological order episode guide", query)
-    };
+
+    let enhanced_query = format!("{} episoden reihenfolge chronologisch wikipedia fernsehserien.de", query);
 
     if std::env::var("VERBOSE").unwrap_or_default() == "1" {
         eprintln!("[VERBOSE]   enhanced_query: \"{}\"", enhanced_query);
@@ -376,7 +364,6 @@ fn extract_main_content(document: &Html, url: &Url) -> Result<String> {
             .filter(|text| {
                 text.len() > 25 && (
                     // Prioritize episode-related content
-                    text.to_lowercase().contains("käthe") ||
                     text.to_lowercase().contains("episode") ||
                     text.to_lowercase().contains("folge") ||
                     text.to_lowercase().contains("film") ||

@@ -134,11 +134,6 @@ pub struct AIProcessor {
 }
 
 impl AIProcessor {
-    /// Create a new AI processor
-    pub async fn new() -> Result<Self> {
-        Self::new_with_verbose(false).await
-    }
-
     /// Create a new AI processor with verbose flag
     pub async fn new_with_verbose(verbose: bool) -> Result<Self> {
         let api_key = env::var("GOOGLE_API_KEY")
@@ -222,10 +217,24 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
             }],
         }];
 
+        // Debug: Print tool definitions
+        if self.verbose {
+            eprintln!("[VERBOSE] Registered {} tools:", tools.len());
+            for tool in &tools {
+                for func in &tool.function_declarations {
+                    eprintln!("[VERBOSE]   - {}: {}", func.name, func.description);
+                }
+            }
+        }
+
         // Main conversation loop with tool calling
-        let max_iterations = 6; // Reduced to prevent quota issues
+        let max_iterations = 8; // Increased to allow for proper tool usage
         for iteration in 1..=max_iterations {
-            println!("🔄 Iteration {} - Sending request to Gemini...", iteration);
+            if iteration == 1 {
+                println!("🔄 Iteration {} - Initial request (expecting search tool call)...", iteration);
+            } else {
+                println!("🔄 Iteration {} - Continuing conversation...", iteration);
+            }
 
             let request = GeminiRequest {
                 contents: conversation_history.clone(),
@@ -235,6 +244,12 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                     max_output_tokens: 4096, // Reduced to save tokens
                 },
             };
+
+            // Debug: Log request details
+            if self.verbose {
+                eprintln!("[VERBOSE] Sending request with {} tools", request.tools.len());
+                eprintln!("[VERBOSE] Request has {} conversation turns", request.contents.len());
+            }
 
             let response = match self.call_gemini_api(&request).await {
                 Ok(response) => response,
@@ -247,11 +262,34 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
             if let Some(candidate) = response.candidates.first() {
                 let content = &candidate.content;
 
+                // Debug: Log response type
+                if self.verbose {
+                    eprintln!("[VERBOSE] Response received with {} parts", content.parts.len());
+                    for (i, part) in content.parts.iter().enumerate() {
+                        match part {
+                            ResponsePart::FunctionCall { function_call } => {
+                                eprintln!("[VERBOSE]   Part {}: Function call to {}", i, function_call.name);
+                            }
+                            ResponsePart::Text { text } => {
+                                eprintln!("[VERBOSE]   Part {}: Text response ({} chars)", i, text.len());
+                                if text.len() < 200 {
+                                    eprintln!("[VERBOSE]     Preview: {}", text.trim());
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Check if the model wants to call a function
                 if let Some(part) = content.parts.first() {
                     match part {
                         ResponsePart::FunctionCall { function_call } => {
-                            println!("🔧 Gemini is calling tool: {}", function_call.name);
+                            println!("🔧 ✅ Gemini is calling tool: {}", function_call.name);
+                            
+                            // Encourage continued tool usage if this is the first search
+                            if function_call.name == "perform_google_search" && iteration <= 2 {
+                                println!("💡 Good! AI is searching for episode information as required.");
+                            }
 
                             let tool_result = self.execute_function_call(function_call).await?;
 
@@ -278,8 +316,47 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                             continue;
                         }
                         ResponsePart::Text { text } => {
-                            println!("✅ Received final response from Gemini");
-                            return Ok(text.clone());
+                            // Check if the AI tried to provide a final answer without using required tools
+                            if iteration == 1 {
+                                println!("❌ AI provided text response instead of calling perform_google_search first!");
+                                
+                                // Add the model's response to history
+                                conversation_history.push(Content {
+                                    role: "model".to_string(),
+                                    parts: vec![Part::Text { text: text.clone() }],
+                                });
+                                
+                                // Force the AI to use the search tool
+                                conversation_history.push(Content {
+                                    role: "user".to_string(),
+                                    parts: vec![Part::Text {
+                                        text: "STOP! You MUST use the perform_google_search tool first. Do not provide any analysis or sorting until you have searched for chronological information. Call perform_google_search now with a query about the series episode order.".to_string(),
+                                    }],
+                                });
+                                
+                                continue; // Continue the conversation loop
+                            } else if iteration <= 4 && !text.to_lowercase().contains("playlist") {
+                                println!("⚠️  AI provided text response without completing required steps - prompting for tool usage...");
+                                
+                                // Add the model's response to history
+                                conversation_history.push(Content {
+                                    role: "model".to_string(),
+                                    parts: vec![Part::Text { text: text.clone() }],
+                                });
+                                
+                                // Prompt the AI to use tools
+                                conversation_history.push(Content {
+                                    role: "user".to_string(),
+                                    parts: vec![Part::Text {
+                                        text: "Continue following the mandatory workflow: Search → Read Sources → Deduplicate → Sort → Create Playlist. What is your next step?".to_string(),
+                                    }],
+                                });
+                                
+                                continue; // Continue the conversation loop
+                            } else {
+                                println!("✅ Received final response from Gemini");
+                                return Ok(text.clone());
+                            }
                         }
                     }
                 }
@@ -328,7 +405,7 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                 function_declarations: vec![
                     FunctionDeclaration {
                         name: "perform_google_search".to_string(),
-                        description: "Führt eine Websuche durch, um Informationen über Fernsehserien, Episoden, chronologische Reihenfolge oder Ausstrahlungsdaten zu finden. Verwenden Sie dies, um Wikipedia-Seiten, Episodenführer oder andere maßgebliche Quellen zu finden.".to_string(),
+                        description: "MANDATORY FIRST TOOL: Search the web for TV series information, episodes, chronological order, or broadcast dates. Use this IMMEDIATELY when you receive episode data to find authoritative sources like Wikipedia pages, episode guides, or other reliable sources. This tool is REQUIRED before attempting to sort episodes. Example queries: '[series name] episodes chronological order', '[series name] episode list wikipedia', '[series name] season episode guide'.".to_string(),
                         parameters: Parameters {
                             r#type: "object".to_string(),
                             properties: json!({
@@ -342,7 +419,7 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                     },
                     FunctionDeclaration {
                         name: "read_website_content".to_string(),
-                        description: "Liest und extrahiert textuelle Inhalte von einer Website-URL. Verwenden Sie dies, um detaillierte Episodeninformationen von Wikipedia, IMDB oder anderen durch die Suche gefundenen Quellen zu erhalten.".to_string(),
+                        description: "MANDATORY SECOND TOOL: Read and extract text content from a website URL. Use this IMMEDIATELY after perform_google_search to get detailed episode information from Wikipedia, IMDB, or other authoritative sources found in your search. This tool is REQUIRED to gather the chronological data needed to properly sort episodes. Extract air dates, season/episode numbers, and chronological order information.".to_string(),
                         parameters: Parameters {
                             r#type: "object".to_string(),
                             properties: json!({
@@ -356,7 +433,7 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                     },
                     FunctionDeclaration {
                         name: "create_vlc_playlist".to_string(),
-                        description: "Erstellt und speichert eine VLC-Wiedergabeliste im XSPF-Format mit den chronologisch sortierten Episoden und startet dann VLC mit dieser Wiedergabeliste.".to_string(),
+                        description: "MANDATORY FINAL TOOL: Create and save a VLC playlist in XSPF format with chronologically sorted episodes, then launch VLC with this playlist. Use this ONLY AFTER you have searched for and gathered chronological information using the other tools, deduplicated episodes, and sorted them in ascending chronological order (oldest first). This tool is REQUIRED to complete the task.".to_string(),
                         parameters: Parameters {
                             r#type: "object".to_string(),
                             properties: json!({
@@ -403,20 +480,6 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                 json!({
                     "title": item.title,
                     "topic": item.topic,
-                    "description": if let Some(desc) = &item.description {
-                        if desc.len() > 200 {
-                            // Find a safe character boundary within 200 chars
-                            let mut end = 200;
-                            while end > 0 && !desc.is_char_boundary(end) {
-                                end -= 1;
-                            }
-                            format!("{}...", &desc[..end])
-                        } else {
-                            desc.clone()
-                        }
-                    } else {
-                        String::new()
-                    },
                     "duration": item.duration,
                     "channel": item.channel,
                     "url": item.url_video,
@@ -442,6 +505,14 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
             eprintln!("[VERBOSE]   args: {}", serde_json::to_string_pretty(args).unwrap_or_else(|_| "invalid JSON".to_string()));
         }
 
+        // Enforce tool usage order - read_website_content cannot be called before perform_google_search
+        if function_name == "read_website_content" {
+            let search_tool_used = std::env::var("SEARCH_TOOL_USED").unwrap_or_default() == "1";
+            if !search_tool_used {
+                return Err(anyhow::anyhow!("ERROR: You must use perform_google_search BEFORE using read_website_content. Please search for information first, then read the discovered URLs."));
+            }
+        }
+
         let result_string = match function_name.as_str() {
             "perform_google_search" => {
                 let query = args["query"]
@@ -452,6 +523,9 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                 if self.verbose {
                     std::env::set_var("VERBOSE", "1");
                 }
+                
+                // Mark that search tool has been used
+                std::env::set_var("SEARCH_TOOL_USED", "1");
                 
                 perform_google_search(query).await?
             }
