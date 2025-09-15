@@ -180,6 +180,7 @@ impl AIProcessor {
 * Kennungen im Titel wie "(S2/E10)" haben die höchste Priorität, (S2/E10) bedeutet Staffel 2, Episode 10, sortieren nach Staffel und Episoden
 * Zahlen am Ende der Titel wie zum Beispiel "(234)" bedeuten Episode 234 in Staffel 1
 * ansonsten verfügbaren Tools zu nutzen, um bei Bedarf chronologische Informationen über Serien zu suchen
+* **IMPORTENT** such auf jeden Fall mit "perform_google_search" nach der Episodenreihenfolge bei wikipedia.de
 * **INTELLIGENTE DEDUPLIZIERUNG**: Sorgfältig Duplikate von Episoden identifizieren und entfernen. Achten Sie auf:
    - Episoden mit identischen oder sehr ähnlichen Titeln (z.B. "Episodentitel" vs "Episodentitel (HD)")
    - Gleicher Inhalt mit verschiedenen Tonspuren (z.B. "Titel" vs "Titel (Audiodeskription)")
@@ -405,7 +406,7 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                 function_declarations: vec![
                     FunctionDeclaration {
                         name: "perform_google_search".to_string(),
-                        description: "MANDATORY FIRST TOOL: Search the web for TV series information, episodes, chronological order, or broadcast dates. Use this IMMEDIATELY when you receive episode data to find authoritative sources like Wikipedia pages, episode guides, or other reliable sources. This tool is REQUIRED before attempting to sort episodes. Example queries: '[series name] episodes chronological order', '[series name] episode list wikipedia', '[series name] season episode guide'.".to_string(),
+                        description: "MANDATORY FIRST TOOL: Search the web for TV series information, episodes, chronological order, or broadcast dates. Use this IMMEDIATELY when you receive episode data to find authoritative sources in Wikipedia pages, Example queries: '[series name] wikipedia.de'.".to_string(),
                         parameters: Parameters {
                             r#type: "object".to_string(),
                             properties: json!({
@@ -419,7 +420,7 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                     },
                     FunctionDeclaration {
                         name: "read_website_content".to_string(),
-                        description: "MANDATORY SECOND TOOL: Read and extract text content from a website URL. Use this IMMEDIATELY after perform_google_search to get detailed episode information from Wikipedia, IMDB, or other authoritative sources found in your search. This tool is REQUIRED to gather the chronological data needed to properly sort episodes. Extract air dates, season/episode numbers, and chronological order information.".to_string(),
+                        description: "MANDATORY SECOND TOOL: Read and extract text content from a website URL. Use this IMMEDIATELY after perform_google_search to get detailed episode information from Wikipedia You find a table with episode details. The sequence of episodes is listed in chronological order.".to_string(),
                         parameters: Parameters {
                             r#type: "object".to_string(),
                             properties: json!({

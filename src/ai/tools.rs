@@ -45,7 +45,7 @@ pub async fn perform_google_search(query: &str) -> Result<String> {
         eprintln!("[VERBOSE]   query: \"{}\"", query);
     }
 
-    let enhanced_query = format!("{} episoden reihenfolge chronologisch wikipedia fernsehserien.de", query);
+    let enhanced_query = format!("{} wikipedia", query);
 
     if std::env::var("VERBOSE").unwrap_or_default() == "1" {
         eprintln!("[VERBOSE]   enhanced_query: \"{}\"", enhanced_query);
