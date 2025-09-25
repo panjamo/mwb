@@ -115,6 +115,52 @@ enum Commands {
 
 const USER_AGENT: &str = "mwb-cli/1.0";
 
+fn get_search_info(search_info: Option<&str>) -> Result<Option<String>> {
+    match search_info {
+        Some("clipboard") => {
+            tracing::info!("Detected clipboard parameter, attempting to read clipboard content");
+            
+            match arboard::Clipboard::new() {
+                Ok(mut clipboard) => {
+                    match clipboard.get_text() {
+                        Ok(content) => {
+                            let trimmed = content.trim();
+                            if trimmed.is_empty() {
+                                tracing::warn!("Clipboard is empty");
+                                println!("{}", "⚠️  Clipboard is empty, proceeding without search info".yellow());
+                                Ok(None)
+                            } else {
+                                tracing::info!(clipboard_length = %trimmed.len(), "Successfully read clipboard content");
+                                println!("{}", format!("📋 Using clipboard content: {}", 
+                                    if trimmed.len() > 50 { 
+                                        format!("{}...", &trimmed[..50]) 
+                                    } else { 
+                                        trimmed.to_string() 
+                                    }
+                                ).cyan());
+                                Ok(Some(trimmed.to_string()))
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(error = %e, "Failed to read clipboard content");
+                            println!("{}", format!("❌ Failed to read clipboard: {}", e).red());
+                            println!("{}", "📋 Proceeding without search info".yellow());
+                            Ok(None)
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to initialize clipboard");
+                    println!("{}", format!("❌ Failed to access clipboard: {}", e).red());
+                    println!("{}", "📋 Proceeding without search info".yellow());
+                    Ok(None)
+                }
+            }
+        }
+        other => Ok(other.map(|s| s.to_string()))
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -272,7 +318,8 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
     if params.count {
         println!("{}", filtered_results.len());
     } else if params.vlc_ai.is_some() {
-        process_with_ai(&filtered_results, params.vlc_ai.as_deref()).await?;
+        let search_info = get_search_info(params.vlc_ai.as_deref())?;
+        process_with_ai(&filtered_results, search_info.as_deref()).await?;
     } else if let Some(quality) = params.vlc {
         // Validate quality parameter and set default if invalid
         let validated_quality = match quality.as_str() {
@@ -470,7 +517,8 @@ async fn multi_search_content(client: &Mediathek, params: SearchParams) -> Resul
     if params.count {
         println!("{}", filtered_results.len());
     } else if params.vlc_ai.is_some() {
-        process_with_ai(&filtered_results, params.vlc_ai.as_deref()).await?;
+        let search_info = get_search_info(params.vlc_ai.as_deref())?;
+        process_with_ai(&filtered_results, search_info.as_deref()).await?;
     } else if let Some(quality) = params.vlc {
         let validated_quality = match quality.as_str() {
             "l" | "low" => "l",

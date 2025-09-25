@@ -37,3 +37,6 @@ urlencoding = "2.1"
 # For structured logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# For clipboard access
+arboard = "3.2"
