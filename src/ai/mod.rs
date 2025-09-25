@@ -147,7 +147,7 @@ impl AIProcessor {
             .timeout(std::time::Duration::from_secs(120))
             .build()?;
 
-        let base_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent".to_string();
+        let base_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent".to_string();
 
         Ok(Self {
             client,
