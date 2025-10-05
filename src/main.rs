@@ -7,6 +7,7 @@ use mediathekviewweb::{
     Mediathek,
 };
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 use std::fs::File;
@@ -106,8 +107,6 @@ enum Commands {
         /// Save XSPF playlist to file (use with -f xspf)
         #[arg(short = 'x', long)]
         xspf_file: bool,
-
-
     },
     /// List available channels
     Channels,
@@ -119,36 +118,42 @@ fn get_search_info(search_info: Option<&str>) -> Result<Option<String>> {
     match search_info {
         Some("clipboard") => {
             tracing::info!("Detected clipboard parameter, attempting to read clipboard content");
-            
+
             match arboard::Clipboard::new() {
-                Ok(mut clipboard) => {
-                    match clipboard.get_text() {
-                        Ok(content) => {
-                            let trimmed = content.trim();
-                            if trimmed.is_empty() {
-                                tracing::warn!("Clipboard is empty");
-                                println!("{}", "⚠️  Clipboard is empty, proceeding without search info".yellow());
-                                Ok(None)
-                            } else {
-                                tracing::info!(clipboard_length = %trimmed.len(), "Successfully read clipboard content");
-                                println!("{}", format!("📋 Using clipboard content: {}", 
-                                    if trimmed.len() > 50 { 
-                                        format!("{}...", &trimmed[..50]) 
-                                    } else { 
-                                        trimmed.to_string() 
-                                    }
-                                ).cyan());
-                                Ok(Some(trimmed.to_string()))
-                            }
-                        }
-                        Err(e) => {
-                            tracing::error!(error = %e, "Failed to read clipboard content");
-                            println!("{}", format!("❌ Failed to read clipboard: {}", e).red());
-                            println!("{}", "📋 Proceeding without search info".yellow());
+                Ok(mut clipboard) => match clipboard.get_text() {
+                    Ok(content) => {
+                        let trimmed = content.trim();
+                        if trimmed.is_empty() {
+                            tracing::warn!("Clipboard is empty");
+                            println!(
+                                "{}",
+                                "⚠️  Clipboard is empty, proceeding without search info".yellow()
+                            );
                             Ok(None)
+                        } else {
+                            tracing::info!(clipboard_length = %trimmed.len(), "Successfully read clipboard content");
+                            println!(
+                                "{}",
+                                format!(
+                                    "📋 Using clipboard content: {}",
+                                    if trimmed.len() > 50 {
+                                        format!("{}...", &trimmed[..50])
+                                    } else {
+                                        trimmed.to_string()
+                                    }
+                                )
+                                .cyan()
+                            );
+                            Ok(Some(trimmed.to_string()))
                         }
                     }
-                }
+                    Err(e) => {
+                        tracing::error!(error = %e, "Failed to read clipboard content");
+                        println!("{}", format!("❌ Failed to read clipboard: {}", e).red());
+                        println!("{}", "📋 Proceeding without search info".yellow());
+                        Ok(None)
+                    }
+                },
                 Err(e) => {
                     tracing::error!(error = %e, "Failed to initialize clipboard");
                     println!("{}", format!("❌ Failed to access clipboard: {}", e).red());
@@ -157,7 +162,7 @@ fn get_search_info(search_info: Option<&str>) -> Result<Option<String>> {
                 }
             }
         }
-        other => Ok(other.map(|s| s.to_string()))
+        other => Ok(other.map(|s| s.to_string())),
     }
 }
 
@@ -185,7 +190,6 @@ async fn main() -> Result<()> {
             vlc_ai,
             xspf_file,
             count,
-
         } => {
             let params = SearchParams {
                 query_terms: query,
@@ -217,7 +221,7 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
     if params.query_terms.len() > 1 {
         return multi_search_content(client, params).await;
     }
-    
+
     let query_string = params.query_terms.join(" ");
 
     // Preprocess query to extract duration selectors and search terms
@@ -284,11 +288,11 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
 
     // Execute the query
     let start_time = Instant::now();
-    
+
     tracing::info!("Executing MediathekView API request");
-    
+
     let result = query_builder.send().await?;
-    
+
     let duration = start_time.elapsed();
     tracing::info!(
         response_time_ms = %duration.as_millis(),
@@ -299,7 +303,7 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
 
     // Save original count before moving results
     let original_count = result.results.len();
-    
+
     // Apply client-side regex filters
     let filtered_results = apply_regex_filters(
         result.results,
@@ -335,7 +339,7 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
     } else {
         match params.format.as_str() {
             "json" => {
-                println!("{}", serde_json::to_string_pretty(&filtered_results)?);
+                print_json(&filtered_results)?;
             }
             "csv" => {
                 print_csv(&filtered_results);
@@ -367,7 +371,7 @@ async fn search_content(client: &Mediathek, params: SearchParams) -> Result<()> 
 
 async fn multi_search_content(client: &Mediathek, params: SearchParams) -> Result<()> {
     use std::collections::HashSet;
-    
+
     tracing::info!(
         search_terms = ?params.query_terms,
         total_searches = %params.query_terms.len(),
@@ -417,11 +421,13 @@ async fn multi_search_content(client: &Mediathek, params: SearchParams) -> Resul
         for filter in duration_filters {
             if let Some(duration_str) = filter.strip_prefix('>') {
                 if let Ok(min_duration) = duration_str.parse::<u64>() {
-                    query_builder = query_builder.duration_min(std::time::Duration::from_secs(min_duration * 60));
+                    query_builder = query_builder
+                        .duration_min(std::time::Duration::from_secs(min_duration * 60));
                 }
             } else if let Some(duration_str) = filter.strip_prefix('<') {
                 if let Ok(max_duration) = duration_str.parse::<u64>() {
-                    query_builder = query_builder.duration_max(std::time::Duration::from_secs(max_duration * 60));
+                    query_builder = query_builder
+                        .duration_max(std::time::Duration::from_secs(max_duration * 60));
                 }
             }
         }
@@ -448,7 +454,7 @@ async fn multi_search_content(client: &Mediathek, params: SearchParams) -> Resul
 
         // Execute the query
         let result = query_builder.send().await?;
-        
+
         tracing::info!(
             query_term = %query_term,
             result_count = %result.results.len(),
@@ -478,14 +484,13 @@ async fn multi_search_content(client: &Mediathek, params: SearchParams) -> Resul
                     "asc" => duration_a.cmp(&duration_b),
                     _ => duration_b.cmp(&duration_a),
                 }
+            }
+            "channel" => match params.sort_order.as_str() {
+                "asc" => a.channel.cmp(&b.channel),
+                _ => b.channel.cmp(&a.channel),
             },
-            "channel" => {
-                match params.sort_order.as_str() {
-                    "asc" => a.channel.cmp(&b.channel),
-                    _ => b.channel.cmp(&a.channel),
-                }
-            },
-            _ => { // timestamp (default)
+            _ => {
+                // timestamp (default)
                 match params.sort_order.as_str() {
                     "asc" => a.timestamp.cmp(&b.timestamp),
                     _ => b.timestamp.cmp(&a.timestamp),
@@ -497,7 +502,7 @@ async fn multi_search_content(client: &Mediathek, params: SearchParams) -> Resul
     // Apply client-side regex filters to unified results
     // Save count before moving results
     let original_count = all_results.len();
-    
+
     // Apply client-side regex filters
     let filtered_results = apply_regex_filters(
         all_results,
@@ -533,7 +538,7 @@ async fn multi_search_content(client: &Mediathek, params: SearchParams) -> Resul
     } else {
         match params.format.as_str() {
             "json" => {
-                println!("{}", serde_json::to_string_pretty(&filtered_results)?);
+                print_json(&filtered_results)?;
             }
             "csv" => {
                 print_csv(&filtered_results);
@@ -800,7 +805,10 @@ fn generate_vlc_playlist_filename(query: &str) -> String {
     format!("mwb_{truncated}_{timestamp}.xspf")
 }
 
-async fn process_with_ai(results: &[mediathekviewweb::models::Item], search_info: Option<&str>) -> Result<()> {
+async fn process_with_ai(
+    results: &[mediathekviewweb::models::Item],
+    search_info: Option<&str>,
+) -> Result<()> {
     if results.is_empty() {
         println!("{}", "No results found to process with AI.".yellow());
         return Ok(());
@@ -1038,6 +1046,65 @@ fn print_csv(results: &[mediathekviewweb::models::Item]) {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct JsonItem {
+    channel: String,
+    topic: String,
+    title: String,
+    timestamp: i64,
+    date_human: String,
+    duration_seconds: Option<u64>,
+    duration_human: Option<String>,
+    url_video: String,
+    url_video_low: Option<String>,
+    url_video_hd: Option<String>,
+    description: Option<String>,
+}
+
+fn print_json(results: &[mediathekviewweb::models::Item]) -> Result<()> {
+    let json_items: Vec<JsonItem> = results
+        .iter()
+        .map(|entry| {
+            let date_human = DateTime::from_timestamp(entry.timestamp, 0)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_default();
+
+            let duration_seconds = entry.duration.map(|d| d.as_secs());
+            let duration_human = entry.duration.map(|d| {
+                let total_secs = d.as_secs();
+                let hours = total_secs / 3600;
+                let minutes = (total_secs % 3600) / 60;
+                let seconds = total_secs % 60;
+
+                if hours > 0 {
+                    format!("{}h {}m {}s", hours, minutes, seconds)
+                } else if minutes > 0 {
+                    format!("{}m {}s", minutes, seconds)
+                } else {
+                    format!("{}s", seconds)
+                }
+            });
+
+            JsonItem {
+                channel: entry.channel.clone(),
+                topic: entry.topic.clone(),
+                title: entry.title.clone(),
+                timestamp: entry.timestamp,
+                date_human,
+                duration_seconds,
+                duration_human,
+                url_video: entry.url_video.clone(),
+                url_video_low: entry.url_video_low.clone(),
+                url_video_hd: entry.url_video_hd.clone(),
+                description: entry.description.clone(),
+            }
+        })
+        .collect();
+
+    println!("{}", serde_json::to_string_pretty(&json_items)?);
+    Ok(())
+}
+
 fn print_oneline(results: &[mediathekviewweb::models::Item]) {
     for entry in results {
         let date = DateTime::from_timestamp(entry.timestamp, 0)
@@ -1109,7 +1176,8 @@ fn print_theme_count_table(results: &[mediathekviewweb::models::Item]) {
     }
 
     // Calculate optimal column width based on longest theme name
-    let max_theme_length = sorted_themes.iter()
+    let max_theme_length = sorted_themes
+        .iter()
         .map(|(theme, _)| theme.len())
         .max()
         .unwrap_or(10);
@@ -1119,16 +1187,29 @@ fn print_theme_count_table(results: &[mediathekviewweb::models::Item]) {
     // Print header
     println!("{}", "Theme Count Report".bold().underline());
     println!("{}", "─".repeat(total_width));
-    println!("{:<width$} {}", "Theme".bold(), "Count".bold(), width = theme_width);
+    println!(
+        "{:<width$} {}",
+        "Theme".bold(),
+        "Count".bold(),
+        width = theme_width
+    );
     println!("{}", "─".repeat(total_width));
 
     // Print results
     for (theme, count) in &sorted_themes {
-        println!("{:<width$} {}", theme.cyan(), count.to_string().green().bold(), width = theme_width);
+        println!(
+            "{:<width$} {}",
+            theme.cyan(),
+            count.to_string().green().bold(),
+            width = theme_width
+        );
     }
 
     println!("{}", "─".repeat(total_width));
-    println!("Total unique themes: {}", sorted_themes.len().to_string().yellow().bold());
+    println!(
+        "Total unique themes: {}",
+        sorted_themes.len().to_string().yellow().bold()
+    );
 }
 
 fn print_xspf(results: &[mediathekviewweb::models::Item], query: &str) {
