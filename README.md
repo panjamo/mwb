@@ -56,6 +56,56 @@ cp .env.example .env
 
 The AI features use direct API integration with built-in web search tools. All other functionality works without AI setup.
 
+## Shell Completion
+
+MWB supports shell completion for all major shells. Generate completion files to enable auto-completion of commands, options, and values.
+
+### Generate Completion Files
+
+```bash
+# Generate completion for your shell
+mwb completion bash > ~/.bash_completion.d/mwb
+mwb completion zsh > ~/.zsh/completions/_mwb
+mwb completion fish > ~/.config/fish/completions/mwb.fish
+mwb completion nushell > ~/.config/nushell/completions/mwb.nu
+mwb completion powershell > $PROFILE.d/mwb.ps1
+mwb completion elvish > ~/.config/elvish/completions/mwb.elv
+```
+
+### Setup Instructions
+
+**Bash:**
+```bash
+# Add to ~/.bashrc or ~/.bash_profile
+source ~/.bash_completion.d/mwb
+```
+
+**Zsh:**
+```bash
+# Ensure ~/.zsh/completions is in your fpath
+# Add to ~/.zshrc:
+fpath=(~/.zsh/completions $fpath)
+autoload -U compinit && compinit
+```
+
+**Fish:**
+```bash
+# Fish automatically loads completions from ~/.config/fish/completions/
+# No additional setup required
+```
+
+**Nushell:**
+```bash
+# Add to your Nushell config file:
+use ~/.config/nushell/completions/mwb.nu
+```
+
+**Features:**
+- Command completion (`search`, `channels`, `completion`)
+- Option completion (`--format`, `--size`, `--exclude`, etc.)
+- Value completion for format options and shells
+- Help text integration
+
 ## Usage
 
 ### Basic Search

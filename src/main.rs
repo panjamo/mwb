@@ -1,6 +1,8 @@
 use anyhow::Result;
 use chrono::DateTime;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use clap_complete::{generate, Shell as ClapShell};
+use clap_complete_nushell::Nushell;
 use colored::Colorize;
 use mediathekviewweb::{
     models::{SortField, SortOrder},
@@ -48,6 +50,16 @@ struct SearchParams {
     vlc_ai: Option<String>,
     xspf_file: bool,
     count: bool,
+}
+
+#[derive(Clone, Debug, ValueEnum)]
+enum Shell {
+    Bash,
+    Elvish,
+    Fish,
+    Powershell,
+    Zsh,
+    Nushell,
 }
 
 #[derive(Subcommand)]
@@ -110,6 +122,12 @@ enum Commands {
     },
     /// List available channels
     Channels,
+    /// Generate shell completion files
+    Completion {
+        /// The shell to generate completion for
+        #[arg(value_enum)]
+        shell: Shell,
+    },
 }
 
 const USER_AGENT: &str = "mwb-cli/1.0";
@@ -210,6 +228,40 @@ async fn main() -> Result<()> {
         }
         Commands::Channels => {
             list_channels(&client).await?;
+        }
+        Commands::Completion { shell } => {
+            let mut cmd = Cli::command();
+            let bin_name = cmd.get_name().to_string();
+            match shell {
+                Shell::Nushell => {
+                    generate(Nushell, &mut cmd, bin_name, &mut std::io::stdout());
+                }
+                Shell::Bash => {
+                    generate(ClapShell::Bash, &mut cmd, bin_name, &mut std::io::stdout());
+                }
+                Shell::Elvish => {
+                    generate(
+                        ClapShell::Elvish,
+                        &mut cmd,
+                        bin_name,
+                        &mut std::io::stdout(),
+                    );
+                }
+                Shell::Fish => {
+                    generate(ClapShell::Fish, &mut cmd, bin_name, &mut std::io::stdout());
+                }
+                Shell::Powershell => {
+                    generate(
+                        ClapShell::PowerShell,
+                        &mut cmd,
+                        bin_name,
+                        &mut std::io::stdout(),
+                    );
+                }
+                Shell::Zsh => {
+                    generate(ClapShell::Zsh, &mut cmd, bin_name, &mut std::io::stdout());
+                }
+            }
         }
     }
 
