@@ -176,7 +176,7 @@ impl AIProcessor {
 
         let search_hint = if let Some(search_info) = &self.search_info {
             if !search_info.is_empty() {
-                format!("* **ZUSÄTZLICHE SUCHINFORMATION**: Verwenden Sie diese Informationen für die Suche nach der Wikipedia-Seite: \"{}\"", search_info)
+                format!("s{}", search_info)
             } else {
                 String::new()
             }
@@ -184,45 +184,47 @@ impl AIProcessor {
             String::new()
         };
 
-        let mut system_prompt = r#"Sie sind ein Experte für TV-Serien-Analyse und VLC-Playlist-Erstellung. Ihre Aufgabe ist es:
+        let mut system_prompt = r#"# TV-Serien-Analyse und VLC-Playlist-Erstellung
 
-* Die bereitgestellten deutschen TV-Episoden/Sendungen zu analysieren
-* Kennungen im Titel wie "(S2/E10)" haben die höchste Priorität, (S2/E10) bedeutet Staffel 2, Episode 10, sortieren nach Staffel und Episoden
-* Zahlen am Ende der Titel wie zum Beispiel "(234)" bedeuten Episode 234 in Staffel 1
-* ansonsten verfügbaren Tools zu nutzen, um bei Bedarf chronologische Informationen über Serien zu suchen
-"#.to_string();
+Sie sind ein Experte für deutsche TV-Serien. Ihre Aufgabe:
+
+## 1. Episoden-Analyse und Sortierung
+- **Primäre Sortierung**: Kennungen wie `(S2/E10)` = Staffel 2, Episode 10
+- **Sekundäre Sortierung**: Zahlen am Ende wie `(234)` = Episode 234 in Staffel 1
+- **Finale Sortierung**: Chronologische Reihenfolge (älteste → neueste)
+- **Die korrekte Episodenreihenfolge befindet sich im Clipboard und soll verwendet werden**
+
+## 2. Intelligente Deduplizierung
+Entfernen Sie Duplikate basierend auf:
+- Identische/ähnliche Titel (z.B. "Titel" vs "Titel (HD)")
+- Gleicher Inhalt, verschiedene Tonspuren (z.B. vs "Audiodeskription")
+- Verschiedene Qualitäten (z.B. vs "klare Sprache")
+- Übereinstimmende Beschreibungen
+- Unterschiedliche Formatierung/Spezialversionen
+
+### Beste Version behalten:
+1. **Standardversion** über Audiodeskription
+2. **Normale Version** über "klare Sprache"
+3. **Höhere Qualität** wenn verfügbar
+4. **Vollständige** über gekürzte Versionen
+5. **Vollständigster Titel/Beschreibung** bei Unsicherheit
+
+## 3. Playlist-Erstellung
+**ZWINGEND ERFORDERLICH**: Rufen Sie `create_vlc_playlist` auf mit:
+- `episodes`: Array von `{title, url, description, duration, channel, topic}` Objekten
+- `playlist_name`: Beschreibender Name
+
+Extrahieren Sie aus den Eingabedaten: `title`, `url_video`, `description`, `duration`, `channel`, `topic`"#.to_string();
 
         if !search_hint.is_empty() {
-            system_prompt.push_str(&format!("\n{}", search_hint));
+            system_prompt.push_str(&format!(
+                "\n\n**alle bekannten Episoden und gewünschte reihenfolge der playlist**: {}",
+                search_hint
+            ));
         }
 
-        system_prompt.push_str(r#"
-* **INTELLIGENTE DEDUPLIZIERUNG**: Sorgfältig Duplikate von Episoden identifizieren und entfernen. Achten Sie auf:
-   - Episoden mit identischen oder sehr ähnlichen Titeln (z.B. "Episodentitel" vs "Episodentitel (HD)")
-   - Gleicher Inhalt mit verschiedenen Tonspuren (z.B. "Titel" vs "Titel (Audiodeskription)")
-   - Verschiedene Videoqualitäten derselben Episode (z.B. "Titel" vs "Titel (klare Sprache)")
-   - Episoden mit übereinstimmenden Beschreibungen aber leicht unterschiedlichen Titeln
-   - Gleiche Episode mit unterschiedlicher Formatierung oder Spezialversionen
-* Verbleibende einzigartige Episoden in AUFSTEIGENDER chronologischer Reihenfolge sortieren (älteste zuerst, neueste zuletzt - nach Ausstrahlungsdatum, Staffel/Episodennummer oder Story-Chronologie)
-* **IMMER** die create_vlc_playlist Funktion aufrufen, um eine XSPF-Playlist zu erstellen - dies ist zwingend erforderlich!
-
-DEDUPLIZIERUNGS-STRATEGIE: Bei Duplikaten die BESTE Version behalten:
-- Standardversion gegenüber Audiodeskriptionsversionen bevorzugen
-- Normale Version gegenüber "klare Sprache"-Versionen bevorzugen
-- Höhere Qualität wenn verfügbar bevorzugen
-- Vollständige Versionen gegenüber gekürzten Versionen bevorzugen
-- Im Zweifelsfall die Version mit dem vollständigsten Titel/Beschreibung behalten
-
-WICHTIG: Sie MÜSSEN die create_vlc_playlist Funktion am Ende mit NUR den deduplizierten Episoden aufrufen, sortiert in AUFSTEIGENDER chronologischer Reihenfolge (älteste Episoden zuerst, neueste zuletzt). Gehen Sie intelligent bei der Deduplizierung vor - nutzen Sie Ihr Verständnis deutscher TV-Namenskonventionen, um Duplikate mit leicht unterschiedlichen Namen zu identifizieren.
-
-Die create_vlc_playlist Funktion erwartet:
-- episodes: Array von {{title, url, description, duration, channel, topic}} Objekten (NACH Deduplizierung)
-- playlist_name: ein beschreibender Name für die Playlist
-
-Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist-Einträge zu erstellen. Extrahieren Sie die Felder title, url_video, description, duration, channel und topic aus jeder Episode."#);
-
         let user_prompt = format!(
-            "Please analyze and chronologically sort these German TV episodes:\n\n{}",
+            "**AUFTRAG**: Erstellen Sie eine VLC-Playlist mit den bereitgestellten Episoden. Deduplizieren Sie intelligent und sortieren Sie chronologisch (älteste → neueste). Verwenden Sie die Episodenreihenfolge aus dem Clipboard.\n\n**Episodendaten**:\n{}",
             episodes_json
         );
 
@@ -246,7 +248,10 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
         let max_iterations = 8; // Increased to allow for proper tool usage
         for iteration in 1..=max_iterations {
             if iteration == 1 {
-                println!("🔄 Iteration {} - Initial request (expecting search tool call)...", iteration);
+                println!(
+                    "🔄 Iteration {} - Initial request (expecting search tool call)...",
+                    iteration
+                );
             } else {
                 println!("🔄 Iteration {} - Continuing conversation...", iteration);
             }
@@ -300,10 +305,12 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                     match part {
                         ResponsePart::FunctionCall { function_call } => {
                             println!("🔧 ✅ Gemini is calling tool: {}", function_call.name);
-                            
+
                             // Encourage continued tool usage if this is the first search
                             if function_call.name == "perform_google_search" && iteration <= 2 {
-                                println!("💡 Good! AI is searching for episode information as required.");
+                                println!(
+                                    "💡 Good! AI is searching for episode information as required."
+                                );
                             }
 
                             let tool_result = self.execute_function_call(function_call).await?;
@@ -334,13 +341,13 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                             // Check if the AI tried to provide a final answer without using required tools
                             if iteration == 1 {
                                 println!("❌ AI provided text response instead of calling perform_google_search first!");
-                                
+
                                 // Add the model's response to history
                                 conversation_history.push(Content {
                                     role: "model".to_string(),
                                     parts: vec![Part::Text { text: text.clone() }],
                                 });
-                                
+
                                 // Force the AI to use the search tool
                                 conversation_history.push(Content {
                                     role: "user".to_string(),
@@ -348,17 +355,17 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                                         text: "STOP! You MUST use the perform_google_search tool first. Do not provide any analysis or sorting until you have searched for chronological information. Call perform_google_search now with a query about the series episode order.".to_string(),
                                     }],
                                 });
-                                
+
                                 continue; // Continue the conversation loop
                             } else if iteration <= 4 && !text.to_lowercase().contains("playlist") {
                                 println!("⚠️  AI provided text response without completing required steps - prompting for tool usage...");
-                                
+
                                 // Add the model's response to history
                                 conversation_history.push(Content {
                                     role: "model".to_string(),
                                     parts: vec![Part::Text { text: text.clone() }],
                                 });
-                                
+
                                 // Prompt the AI to use tools
                                 conversation_history.push(Content {
                                     role: "user".to_string(),
@@ -366,7 +373,7 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                                         text: "Continue following the mandatory workflow: Search → Read Sources → Deduplicate → Sort → Create Playlist. What is your next step?".to_string(),
                                     }],
                                 });
-                                
+
                                 continue; // Continue the conversation loop
                             } else {
                                 println!("✅ Received final response from Gemini");
@@ -459,7 +466,7 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                                         "type": "object",
                                         "properties": {
                                             "title": {"type": "string"},
-                                            "url": {"type": "string"}, 
+                                            "url": {"type": "string"},
                                             "description": {"type": "string"},
                                             "duration": {"type": "number", "description": "Duration in seconds"},
                                             "channel": {"type": "string", "description": "TV channel name"},
@@ -534,21 +541,21 @@ Verwenden Sie die in der Eingabe bereitgestellten Episodendaten, um die Playlist
                 let query = args["query"]
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("Missing 'query' argument"))?;
-                
+
                 tracing::debug!(query = %query, "Performing Google search");
-                
+
                 // Mark that search tool has been used
                 std::env::set_var("SEARCH_TOOL_USED", "1");
-                
+
                 perform_google_search(query).await?
             }
             "read_website_content" => {
                 let url = args["url"]
                     .as_str()
                     .ok_or_else(|| anyhow::anyhow!("Missing 'url' argument"))?;
-                
+
                 tracing::debug!(url = %url, "Reading website content");
-                
+
                 read_website_content(url).await?
             }
             "create_vlc_playlist" => {
